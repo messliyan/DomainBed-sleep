@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="PublishConfigData" autoUpload="Always" serverName="hhao@10.108.17.28:786 password" remoteFilesAllowedToDisappearOnAutoupload="false">
+    <serverData>
+      <paths name="Dxw@10.108.17.26:45 password">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/Dxw/Jiabin/DomainBed-sleep" local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="hhao@10.108.17.28:786 password">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/hhao/Jiabin/DomainBed-sleep" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="root@10.108.17.23:786 password">
+        <serverdata>
+          <mappings>
+            <mapping local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+    </serverData>
+    <option name="myAutoUpload" value="ALWAYS" />
+  </component>
+</project>

@@ -134,17 +134,51 @@ class Featurizer(nn.Module):
         return self.mrcnn(x)
 
 
+class MLP(nn.Module): 
+    """Just an MLP""" 
+    def __init__(self, n_inputs, n_outputs, hparams=None): 
+        super(MLP, self).__init__()
+        # 提供默认超参数，以防未传入
+        if hparams is None:
+            hparams = {
+                'mlp_width': 256,
+                'mlp_depth': 3,
+                'mlp_dropout': 0.0
+            }
+        self.input = nn.Linear(n_inputs, hparams['mlp_width']) 
+        self.dropout = nn.Dropout(hparams['mlp_dropout']) 
+        self.hiddens = nn.ModuleList([ 
+            nn.Linear(hparams['mlp_width'], hparams['mlp_width']) 
+            for _ in range(hparams['mlp_depth']-2)]) 
+        self.output = nn.Linear(hparams['mlp_width'], n_outputs) 
+        self.n_outputs = n_outputs 
+        self.activation = nn.Identity() # for URM; does not affect other algorithms 
+
+    def forward(self, x): 
+        x = self.input(x) 
+        x = self.dropout(x) 
+        x = F.relu(x) 
+        for hidden in self.hiddens: 
+            x = hidden(x) 
+            x = self.dropout(x) 
+            x = F.relu(x) 
+        x = self.output(x) 
+        x = self.activation(x) # for URM; does not affect other algorithms 
+        return x
+
+
 class Classifier(nn.Module):
     """分类器
     
-    简单的全连接层分类器，将特征提取器的输出映射到睡眠阶段类别。
+    使用MLP作为分类器，将特征提取器的输出映射到睡眠阶段类别。
     """
     def __init__(self):
         """初始化分类器
         """
         super(Classifier, self).__init__()
-        # 全连接层：将高级特征映射到睡眠阶段类别
-        self.fc = nn.Linear(80 * afr_reduced_cnn_size, NUM_CLASSES)
+        # 使用MLP作为分类器
+        self.mlp = MLP(80 * afr_reduced_cnn_size, NUM_CLASSES)
+        self.n_outputs = NUM_CLASSES
     
     def forward(self, x):
         """前向传播
@@ -157,8 +191,8 @@ class Classifier(nn.Module):
         """
         # 展平特征向量
         x_flat = x.contiguous().view(x.shape[0], -1)
-        # 通过全连接层输出类别概率分布
-        output = self.fc(x_flat)
+        # 通过MLP输出类别概率分布
+        output = self.mlp(x_flat)
         return output
 
 
@@ -174,12 +208,12 @@ class CNNDA(nn.Module):
         super(CNNDA, self).__init__()
         # 1. 特征提取器：多分辨率CNN
         self.feature_extractor = Featurizer()
-        # 2. 分类器：将特征映射到睡眠阶段类别
+        # 2. 分类器：将特征映射到睡眠阶段类别，使用MLP
         self.classifier = Classifier()
         # 特征维度（用于域判别器）
         self.feature_dim = 80 * afr_reduced_cnn_size
         # 分类器输出维度
-        self.n_outputs = NUM_CLASSES
+        self.n_outputs = self.classifier.n_outputs
     
     def forward(self, x, return_features=False):
         """前向传播

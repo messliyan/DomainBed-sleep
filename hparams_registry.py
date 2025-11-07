@@ -41,8 +41,8 @@ def _hparams(algorithm, dataset, random_seed):
         包含所有超参数配置的字典
     """
     # 小图像数据集列表，用于特殊处理
-    SMALL_IMAGES = ['Debug28', 'RotatedMNIST', 'ColoredMNIST']
-
+    # SMALL_IMAGES = ['Debug28', 'RotatedMNIST', 'ColoredMNIST']
+    
     # 初始化超参数字典
     hparams = {}
 
@@ -80,7 +80,6 @@ def _hparams(algorithm, dataset, random_seed):
         _hparam('d_steps_per_g_step', 1, lambda r: int(2**r.uniform(0, 3)))  # 每个生成器步对应的判别器步数
         _hparam('grad_penalty', 0., lambda r: 10**r.uniform(-2, 1))  # 梯度惩罚权重
         _hparam('beta1', 0.5, lambda r: r.choice([0., 0.5]))  # Adam优化器的beta1参数
-        _hparam('linear_steps', 500, lambda r: int(10**r.uniform(2, 4)))  # 线性预热步数
 
     elif algorithm == 'Fish':
         _hparam('meta_lr', 0.5, lambda r:r.choice([0.05, 0.1, 0.5]))
@@ -175,10 +174,7 @@ def _hparams(algorithm, dataset, random_seed):
         _hparam('urm_discriminator_hidden_layers', 1, lambda r: int(r.choice([1,2,3])))
         _hparam('urm_generator_output', 'tanh', lambda r: str(r.choice(['tanh', 'relu'])))
                 
-        if dataset in SMALL_IMAGES:
-            _hparam('urm_discriminator_lr', 1e-3, lambda r: 10**r.uniform(-5.5, -3.5))
-        else:
-            _hparam('urm_discriminator_lr', 5e-5, lambda r: 10**r.uniform(-6, -4.5))
+        _hparam('urm_discriminator_lr', 5e-5, lambda r: 10**r.uniform(-6, -4.5))
 
 
     if algorithm == "ADRMX":
@@ -194,27 +190,15 @@ def _hparams(algorithm, dataset, random_seed):
 
 
     # 数据集和算法特定的超参数定义
-    # 以下代码块对应特定的超参数，根据数据集和算法进行调整
     # 基础学习率
-    if dataset in SMALL_IMAGES:
-        if algorithm == "ADRMX":
-            _hparam('lr', 3e-3, lambda r: r.choice([5e-4, 1e-3, 2e-3, 3e-3]))
-        else:
-            _hparam('lr', 1e-3, lambda r: 10**r.uniform(-4.5, -2.5))
+    if algorithm == "ADRMX":
+        _hparam('lr', 3e-5, lambda r: r.choice([2e-5, 3e-5, 4e-5, 5e-5]))
     else:
-        if algorithm == "ADRMX":
-            _hparam('lr', 3e-5, lambda r: r.choice([2e-5, 3e-5, 4e-5, 5e-5]))
-        else:
-            _hparam('lr', 5e-5, lambda r: 10**r.uniform(-5, -3.5))
+        _hparam('lr', 3e-1, lambda r: 10**r.uniform(-5, -3.5))
 
-    if dataset in SMALL_IMAGES:
-        _hparam('weight_decay', 0., lambda r: 0.)
-    else:
-        _hparam('weight_decay', 0., lambda r: 10**r.uniform(-6, -2))
+    _hparam('weight_decay', 0.01, lambda r: 10**r.uniform(-6, -2))
 
-    if dataset in SMALL_IMAGES:
-        _hparam('batch_size', 64, lambda r: int(2**r.uniform(3, 9)))
-    elif algorithm == 'ARM':
+    if algorithm == 'ARM':
         _hparam('batch_size', 8, lambda r: 8)
     elif algorithm == 'RDM':
         if dataset in ['DomainNet', 'TerraIncognita']:
@@ -224,22 +208,13 @@ def _hparams(algorithm, dataset, random_seed):
     elif dataset == 'DomainNet':
         _hparam('batch_size', 32, lambda r: int(2**r.uniform(3, 5)))
     else:
-        _hparam('batch_size', 32, lambda r: int(2**r.uniform(3, 5.5)))
+        _hparam('batch_size', 128, lambda r: int(2**r.uniform(3, 5.5)))
 
-    if algorithm in ['DANN', 'CDANN'] and dataset in SMALL_IMAGES:
-        _hparam('lr_g', 1e-3, lambda r: 10**r.uniform(-4.5, -2.5))
-    elif algorithm in ['DANN', 'CDANN']:
-        _hparam('lr_g', 5e-5, lambda r: 10**r.uniform(-5, -3.5))
+    _hparam('lr_g', 5e-5, lambda r: 10**r.uniform(-5, -3.5))
 
-    if algorithm in ['DANN', 'CDANN'] and dataset in SMALL_IMAGES:
-        _hparam('lr_d', 1e-3, lambda r: 10**r.uniform(-4.5, -2.5))
-    elif algorithm in ['DANN', 'CDANN']:
-        _hparam('lr_d', 5e-5, lambda r: 10**r.uniform(-5, -3.5))
+    _hparam('lr_d', 5e-5, lambda r: 10**r.uniform(-5, -3.5))
 
-    if algorithm in ['DANN', 'CDANN'] and dataset in SMALL_IMAGES:
-        _hparam('weight_decay_g', 0., lambda r: 0.)
-    elif algorithm in ['DANN', 'CDANN']:
-        _hparam('weight_decay_g', 0., lambda r: 10**r.uniform(-6, -2))
+    _hparam('weight_decay_g', 0.01, lambda r: 10**r.uniform(-6, -2))
 
     return hparams
 
@@ -273,3 +248,4 @@ def random_hparams(algorithm, dataset, seed):
     """
     # 从_hparams函数获取随机值，忽略默认值
     return {a: c for a, (b, c) in _hparams(algorithm, dataset, seed).items()}
+

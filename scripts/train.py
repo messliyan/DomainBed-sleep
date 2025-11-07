@@ -27,7 +27,7 @@ if __name__ == "__main__":
         choices=["domain_generalization", "domain_adaptation"])
     parser.add_argument('--hparams', type=str,
         help='JSON-serialized hparams dict')
-    parser.add_argument('--hparams_seed', type=int, default=34,
+    parser.add_argument('--hparams_seed', type=int, default=0,
         help='Seed for random hparams (0 means "default hparams")')
     parser.add_argument('--trial_seed', type=int, default=34,
         help='Trial number (used for seeding split_dataset and '
@@ -38,11 +38,13 @@ if __name__ == "__main__":
         help='Number of steps. Default is dataset-dependent.')
     parser.add_argument('--checkpoint_freq', type=int, default=None,
         help='Checkpoint every N steps. Default is dataset-dependent.')
-    parser.add_argument('--test_envs', type=int, nargs='+', default=[0])
-    parser.add_argument('--output_dir', type=str, default="results/dann_results")
-    parser.add_argument('--holdout_fraction', type=float, default=0.2)
-    parser.add_argument('--uda_holdout_fraction', type=float, default=0,
-        help="For domain adaptation, % of test to use unlabeled for training.")
+    parser.add_argument('--test_envs', type=int, nargs='+', default=[0],
+                        help='指定索引为1的环境作为测试环境（目标域）')
+    parser.add_argument('--output_dir', type=str, default="results/dann_test_env0")
+    parser.add_argument('--holdout_fraction', type=float, default=0.2,
+                        help="")
+    parser.add_argument('--uda_holdout_fraction', type=float, default=0.8,
+        help="")
     parser.add_argument('--skip_model_save', action='store_true')
     parser.add_argument('--save_model_every_checkpoint', action='store_true')
     args = parser.parse_args()
@@ -117,9 +119,9 @@ if __name__ == "__main__":
     # domain generalization and domain adaptation results, then domain
     # generalization algorithms should create the same 'uda-splits', which will
     # be discared at training.
-    in_splits = []
-    out_splits = []
-    uda_splits = []
+    in_splits = [] # ：标记训练数据，用于源域训练
+    out_splits = [] # 测试评估数据，用于性能评估
+    uda_splits = [] # 未标记数据，用于域适应训练
     for env_i, env in enumerate(dataset):
         uda = []
 

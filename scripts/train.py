@@ -1,5 +1,3 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
-
 import argparse
 import collections
 import json
@@ -7,26 +5,22 @@ import os
 import random
 import sys
 import time
-import uuid
 
 import numpy as np
-import PIL
 import torch
-import torchvision
 import torch.utils.data
-
-from domainbed import datasets
-from domainbed import hparams_registry
-from domainbed import algorithms
-from domainbed.lib import misc
-from domainbed.lib.fast_data_loader import InfiniteDataLoader, FastDataLoader
+import algorithms
+import datasets
+import hparams_registry
+from lib import misc
+from lib.fast_data_loader import InfiniteDataLoader, FastDataLoader
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Domain generalization')
     parser.add_argument('--data_dir', type=str)
-    parser.add_argument('--dataset', type=str, default="RotatedMNIST")
-    parser.add_argument('--algorithm', type=str, default="ERM")
-    parser.add_argument('--task', type=str, default="domain_generalization",
+    parser.add_argument('--dataset', type=str, default="SleepDataset")
+    parser.add_argument('--algorithm', type=str, default="CDANN")
+    parser.add_argument('--task', type=str, default="domain_adaptation",
         choices=["domain_generalization", "domain_adaptation"])
     parser.add_argument('--hparams', type=str,
         help='JSON-serialized hparams dict')
@@ -49,6 +43,63 @@ if __name__ == "__main__":
     parser.add_argument('--skip_model_save', action='store_true')
     parser.add_argument('--save_model_every_checkpoint', action='store_true')
     args = parser.parse_args()
+    
+    # 添加DebugSleep数据集支持
+    if args.dataset == 'DebugSleep':
+        # 导入DebugSleepDataset类
+        from test.helpers import DebugSleepDataset
+        
+        # 动态添加DebugSleep数据集到datasets模块
+        if 'DebugSleep' not in getattr(datasets, 'DATASETS', []):
+            if not hasattr(datasets, 'DATASETS'):
+                datasets.DATASETS = []
+            datasets.DATASETS.append('DebugSleep')
+        
+        # 创建DebugSleep数据集类
+        class DebugSleepDatasetClass(datasets.MultipleEnvironmentEEGDataset):
+            ENVIRONMENTS = ["env1", "env2"]
+            
+            def __init__(self, root, test_envs, hparams):
+                # 使用helpers中的DebugSleepDataset创建两个环境
+                environments = []
+                for env_name in self.ENVIRONMENTS:
+                    env = DebugSleepDataset(env_name, num_samples=32)
+                    environments.append(env)
+                
+                self.input_shape = environments[0].input_shape
+                self.num_classes = environments[0].num_classes
+                super(datasets.MultipleEnvironmentEEGDataset, self).__init__(environments)
+        
+        # 注册DebugSleep数据集
+        if not hasattr(datasets, 'DATASETS_REGISTRY'):
+            datasets.DATASETS_REGISTRY = {}
+        datasets.DATASETS_REGISTRY['DebugSleep'] = DebugSleepDatasetClass
+        
+        if not hasattr(datasets, 'DATASETS_NUM_CLASSES'):
+            datasets.DATASETS_NUM_CLASSES = {}
+        datasets.DATASETS_NUM_CLASSES['DebugSleep'] = 5
+        
+        if not hasattr(datasets, 'DATASETS_INPUT_SHAPE'):
+            datasets.DATASETS_INPUT_SHAPE = {}
+        datasets.DATASETS_INPUT_SHAPE['DebugSleep'] = (1, 3000)
+        
+        # 为DebugSleep设置默认超参数
+        if not hasattr(hparams_registry, 'DATASET_HPARAMS'):
+            hparams_registry.DATASET_HPARAMS = {}
+        if 'DebugSleep' not in hparams_registry.DATASET_HPARAMS:
+            # 使用SleepDataset的超参数作为基础
+            hparams_registry.DATASET_HPARAMS['DebugSleep'] = hparams_registry.DATASET_HPARAMS.get('SleepDataset', {})
+        
+        # 为常用算法设置DebugSleep的超参数
+        if not hasattr(hparams_registry, 'ALGORITHM_HPAMAMS'):
+            hparams_registry.ALGORITHM_HPAMAMS = {}
+        for algo in ['ERM', 'CDANN', 'DANN']:
+            if algo in getattr(algorithms, 'ALGORITHMS', []) and (algo, 'DebugSleep') not in hparams_registry.ALGORITHM_HPAMAMS:
+                # 使用对应算法在SleepDataset上的超参数
+                hparams_registry.ALGORITHM_HPAMAMS[(algo, 'DebugSleep')] = \
+                    hparams_registry.ALGORITHM_HPAMAMS.get((algo, 'SleepDataset'), \
+                                                          hparams_registry.ALGORITHM_HPAMAMS.get((algo, 'RotatedMNIST'), {}))
+ 
 
     # If we ever want to implement checkpointing, just persist these values
     # every once in a while, and then load them from disk here.

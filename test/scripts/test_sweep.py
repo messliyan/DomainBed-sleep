@@ -1,25 +1,12 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 
-import argparse
-import itertools
-import json
 import os
 import subprocess
-import sys
-import time
 import unittest
 import uuid
 
-import torch
+from scripts import sweep
 
-from domainbed import datasets
-from domainbed import hparams_registry
-from domainbed import algorithms
-from domainbed import networks
-from domainbed.test import helpers
-from domainbed.scripts import sweep
-
-from parameterized import parameterized
 
 class TestSweep(unittest.TestCase):
 
@@ -32,7 +19,7 @@ class TestSweep(unittest.TestCase):
         self.assertTrue(job.output_dir.startswith(sweep_output_dir))
         self.assertEqual(job.state, sweep.Job.NOT_LAUNCHED)
         self.assertEqual(job.command_str,
-            f'python -m domainbed.scripts.train --foo bar --output_dir {job.output_dir}')
+            f'python -m scripts.train --foo bar --output_dir {job.output_dir}')
 
     def test_job_launch(self):
         """Test that launching a job calls the launcher_fn with appropariate

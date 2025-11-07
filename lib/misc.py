@@ -1,109 +1,235 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
-
 """
-Things that don't belong anywhere else
+包含多种通用工具函数和辅助类，用于支持模型训练、数据处理、指标计算等基础任务，是项目的 “工具库”。
+主要方法和类如下：
+距离与投影函数
+    distance(h1, h2)：计算两个网络（分类器）参数的欧氏距离（基于参数的 Frobenius 范数），用于衡量模型差异。
+    proj(delta, adv_h, h)：将对抗网络adv_h投影到以h为中心、delta为半径的欧氏球内，用于对抗训练中的约束。
+    l2_between_dicts(dict_1, dict_2)：计算两个参数字典（如模型状态字典）的 L2 距离，用于比较参数差异。
+移动平均类
+    ErmPlusPlusMovingAvg：维护网络参数的滑动平均（SMA），在训练迭代达到阈值后开始更新，用于稳定模型预测（可能用于 ERM++ 算法）。
+    MovingAverage：基于指数移动平均（EMA）更新数据（如损失或特征），支持梯度校正，用于平滑训练过程中的波动。
+数据处理工具
+    make_weights_for_balanced_classes(dataset)：为不平衡数据集生成类别权重，使每个类别的样本在训练中贡献均衡的权重，缓解类别不平衡问题。
+    split_dataset(dataset, n, seed)：将数据集按比例随机分割为两部分（如训练集和验证集），支持固定随机种子确保可复现性。
+随机数据对生成函数
+    random_pairs_of_minibatches(minibatches)：随机生成小批量数据对，用于对比学习或跨域数据增强。
+评估与调试工具
+    accuracy(network, loader, weights, device)：计算模型在给定数据加载器上的准确率，支持加权样本（如平衡权重）。
+    pdb()：快速启动调试器（PDB），方便代码调试。
+    seed_hash(*args)：将输入参数哈希为整数作为随机种子，确保实验的可复现性。
+其他辅助功能
+    print_separator()、print_row(row)：格式化输出实验结果（如表格），便于结果展示。
+    Tee类：同时将输出写入控制台和文件，用于保存实验日志。
+    ParamDict类：支持张量运算的有序字典，用于管理模型参数，方便参数的加减乘除等操作。
 """
 
 import copy
-import math
 import hashlib
-import sys
-from collections import OrderedDict
-from numbers import Number
 import operator
+import sys
+from collections import Counter
+from collections import OrderedDict
+from itertools import cycle
+from numbers import Number
 
+import math
 import numpy as np
 import torch
-from collections import Counter
-from itertools import cycle
 
 
 def distance(h1, h2):
-    ''' distance of two networks (h1, h2 are classifiers)'''
+    """计算两个网络模型参数之间的欧氏距离
+    
+    Args:
+        h1: 第一个模型（分类器）对象
+        h2: 第二个模型（分类器）对象
+        
+    Returns:
+        torch.Tensor: 两个模型参数之间的欧氏距离
+    """
     dist = 0.
+    # 遍历模型的所有参数
     for param in h1.state_dict():
+        # 获取两个模型的对应参数
         h1_param, h2_param = h1.state_dict()[param], h2.state_dict()[param]
-        dist += torch.norm(h1_param - h2_param) ** 2  # use Frobenius norms for matrices
+        # 计算参数差异的Frobenius范数平方和
+        dist += torch.norm(h1_param - h2_param) ** 2  # 对矩阵使用Frobenius范数
+    # 返回欧氏距离（平方根）
     return torch.sqrt(dist)
 
 def proj(delta, adv_h, h):
-    ''' return proj_{B(h, \delta)}(adv_h), Euclidean projection to Euclidean ball'''
-    ''' adv_h and h are two classifiers'''
+    """将对抗模型参数投影到以原始模型为中心的欧氏球内
+    
+    实现欧几里得投影：proj_{B(h, \delta)}(adv_h)
+    确保对抗模型adv_h与原始模型h之间的距离不超过delta。
+    
+    Args:
+        delta: 欧氏球的半径
+        adv_h: 对抗模型（可能在球外）
+        h: 原始模型，作为球的中心
+        
+    Returns:
+        投影后的对抗模型
+    """
+    # 计算两个模型之间的距离
     dist = distance(adv_h, h)
+    
+    # 如果距离已经在允许范围内，直接返回
     if dist <= delta:
         return adv_h
     else:
+        # 计算投影比例：将距离缩放到delta
         ratio = delta / dist
+        # 对每个参数进行投影
         for param_h, param_adv_h in zip(h.parameters(), adv_h.parameters()):
+            # 保留方向，缩放距离到delta
             param_adv_h.data = param_h + ratio * (param_adv_h - param_h)
+        # 调试时可验证投影后距离是否正确
         # print("distance: ", distance(adv_h, h))
         return adv_h
 
 def l2_between_dicts(dict_1, dict_2):
+    """计算两个参数字典之间的L2距离
+    
+    常用于比较两个模型状态字典之间的差异。
+    
+    Args:
+        dict_1: 第一个参数字典（如模型state_dict）
+        dict_2: 第二个参数字典（如模型state_dict）
+        
+    Returns:
+        torch.Tensor: 两个字典参数之间的平均L2距离
+    """
+    # 确保两个字典长度相同
     assert len(dict_1) == len(dict_2)
+    
+    # 按键排序获取参数值列表，确保顺序一致
     dict_1_values = [dict_1[key] for key in sorted(dict_1.keys())]
     dict_2_values = [dict_2[key] for key in sorted(dict_1.keys())]
+    
+    # 计算所有参数的平均平方差
     return (
         torch.cat(tuple([t.view(-1) for t in dict_1_values])) -
         torch.cat(tuple([t.view(-1) for t in dict_2_values]))
     ).pow(2).mean()
 
 class ErmPlusPlusMovingAvg:
+    """维护网络参数的简单移动平均（SMA）
+    
+    用于ERM++算法中，在训练迭代达到阈值后开始更新移动平均模型，
+    以稳定模型预测结果。
+    """
     def __init__(self, network):
-        self.network = network
+        """初始化移动平均对象
+        
+        Args:
+            network: 要跟踪的原始网络模型
+        """
+        self.network = network  # 原始网络
+        # 创建网络的深拷贝作为移动平均模型
         self.network_sma = copy.deepcopy(network)
-        self.network_sma.eval()
-        self.sma_start_iter = 600
-        self.global_iter = 0
-        self.sma_count = 0
+        self.network_sma.eval()  # 设置为评估模式
+        self.sma_start_iter = 600  # 开始移动平均的迭代步数
+        self.global_iter = 0  # 当前全局迭代步数
+        self.sma_count = 0  # 移动平均更新计数器
 
     def update_sma(self):
-        self.global_iter += 1
-        new_dict = {}
-        if self.global_iter>=self.sma_start_iter:
-            self.sma_count += 1
-            for (name,param_q), (_,param_k) in zip(self.network.state_dict().items(), self.network_sma.state_dict().items()):
+        """更新移动平均模型参数
+        
+        在达到起始迭代步数后，使用简单移动平均更新模型参数。
+        """
+        self.global_iter += 1  # 增加迭代计数
+        new_dict = {}  # 新的参数字典
+        
+        # 检查是否达到开始移动平均的迭代步数
+        if self.global_iter >= self.sma_start_iter:
+            self.sma_count += 1  # 增加移动平均计数器
+            # 计算每个参数的移动平均值
+            for (name, param_q), (_, param_k) in zip(self.network.state_dict().items(), self.network_sma.state_dict().items()):
+                # 跳过批归一化的num_batches_tracked参数
                 if 'num_batches_tracked' not in name:
-                   new_dict[name] = ((param_k.data.detach().clone()* self.sma_count + param_q.data.detach().clone())/(1.+self.sma_count))
+                    # 计算简单移动平均：(prev * count + current) / (count + 1)
+                    new_dict[name] = ((param_k.data.detach().clone() * self.sma_count + param_q.data.detach().clone()) / (1. + self.sma_count))
         else:
-            for (name,param_q), (_,param_k) in zip(self.network.state_dict().items(), self.network_sma.state_dict().items()):
+            # 未达到起始步数时，直接复制当前参数
+            for (name, param_q), (_, param_k) in zip(self.network.state_dict().items(), self.network_sma.state_dict().items()):
                 if 'num_batches_tracked' not in name:
                     new_dict[name] = param_q.detach().data.clone()
+        
+        # 更新移动平均模型的参数
         self.network_sma.load_state_dict(new_dict)
 
 
 class MovingAverage:
-
+    """指数移动平均（EMA）计算类
+    
+    用于平滑数据序列，如损失值或特征表示。支持梯度校正，确保
+    反向传播的梯度幅度不受EMA参数影响。
+    """
     def __init__(self, ema, oneminusema_correction=True):
-        self.ema = ema
-        self.ema_data = {}
-        self._updates = 0
-        self._oneminusema_correction = oneminusema_correction
+        """初始化移动平均对象
+        
+        Args:
+            ema: 指数移动平均系数，范围[0,1)，接近1表示更平滑
+            oneminusema_correction: 是否启用1/(1-ema)校正
+        """
+        self.ema = ema  # 指数移动平均系数
+        self.ema_data = {}  # 存储每个数据项的当前EMA值
+        self._updates = 0  # 更新计数器
+        self._oneminusema_correction = oneminusema_correction  # 是否启用校正
 
     def update(self, dict_data):
-        ema_dict_data = {}
+        """使用新数据更新移动平均
+        
+        Args:
+            dict_data: 包含需要更新的数据项的字典，键为名称，值为张量
+            
+        Returns:
+            更新后的EMA数据字典
+        """
+        ema_dict_data = {}  # 存储更新后的EMA值
+        
         for name, data in dict_data.items():
+            # 将数据重塑为二维张量便于处理
             data = data.view(1, -1)
+            
+            # 获取前一个EMA值，如果是第一次更新则使用零张量
             if self._updates == 0:
                 previous_data = torch.zeros_like(data)
             else:
                 previous_data = self.ema_data[name]
 
+            # 计算指数移动平均：ema * 前值 + (1-ema) * 新值
             ema_data = self.ema * previous_data + (1 - self.ema) * data
+            
+            # 应用梯度校正
             if self._oneminusema_correction:
-                # correction by 1/(1 - self.ema)
-                # so that the gradients amplitude backpropagated in data is independent of self.ema
+                # 乘以1/(1-self.ema)，确保梯度幅度不受ema参数影响
                 ema_dict_data[name] = ema_data / (1 - self.ema)
             else:
                 ema_dict_data[name] = ema_data
+            
+            # 保存当前EMA值（分离梯度）
             self.ema_data[name] = ema_data.clone().detach()
 
-        self._updates += 1
+        self._updates += 1  # 增加更新计数
         return ema_dict_data
 
 
 
 def make_weights_for_balanced_classes(dataset):
+    """为不平衡数据集生成类别权重
+    
+    计算每个类别的权重，使稀有类在训练中获得更高权重，
+    缓解类别不平衡问题。
+    
+    Args:
+        dataset: PyTorch数据集对象，每个样本返回(data, label)元组
+        
+    Returns:
+        torch.Tensor: 长度等于数据集大小的权重张量，每个样本对应一个权重值
+    """
+    # 统计每个类别的样本数量
     counts = Counter()
     classes = []
     for _, y in dataset:
@@ -111,12 +237,16 @@ def make_weights_for_balanced_classes(dataset):
         counts[y] += 1
         classes.append(y)
 
+    # 计算类别总数
     n_classes = len(counts)
 
+    # 为每个类别计算权重
     weight_per_class = {}
     for y in counts:
+        # 权重计算公式：1/(类别数量 * 总类别数)
         weight_per_class[y] = 1 / (counts[y] * n_classes)
 
+    # 生成样本权重张量
     weights = torch.zeros(len(dataset))
     for i, y in enumerate(classes):
         weights[i] = weight_per_class[int(y)]
@@ -124,16 +254,32 @@ def make_weights_for_balanced_classes(dataset):
     return weights
 
 def pdb():
+    """启动Python调试器
+    
+    恢复标准输出并重定向到PDB调试器，方便在代码中快速插入断点。
+    提示用户输入'n'可跳转到父函数。
+    """
+    # 恢复标准输出（以防被重定向）
     sys.stdout = sys.__stdout__
-    import pdb
+    import pdb  # 导入Python调试器
     print("Launching PDB, enter 'n' to step to parent function.")
-    pdb.set_trace()
+    pdb.set_trace()  # 设置断点
 
 def seed_hash(*args):
+    """从输入参数生成确定性的随机种子
+    
+    将任意输入参数序列哈希为一个整数，用作随机种子，
+    确保相同参数组合生成相同的随机种子，保证实验可复现性。
+    
+    Args:
+        *args: 任意数量和类型的参数
+        
+    Returns:
+        int: 用作随机种子的整数
     """
-    Derive an integer hash from all args, for use as a random seed.
-    """
+    # 将参数转换为字符串
     args_str = str(args)
+    # 计算MD5哈希并转换为整数，限制在2^31范围内
     return int(hashlib.md5(args_str.encode("utf-8")).hexdigest(), 16) % (2**31)
 
 def print_separator():
@@ -154,41 +300,97 @@ def print_row(row, colwidth=10, latex=False):
     print(sep.join([format_val(x) for x in row]), end_)
 
 class _SplitDataset(torch.utils.data.Dataset):
-    """Used by split_dataset"""
+    """数据集分割包装类
+    
+    用于创建原始数据集的子集，通过索引键列表来访问原始数据集中的特定元素。
+    split_dataset函数的内部辅助类。
+    """
     def __init__(self, underlying_dataset, keys):
+        """初始化分割数据集
+        
+        Args:
+            underlying_dataset: 原始数据集对象
+            keys: 要包含在子集中的元素索引列表
+        """
         super(_SplitDataset, self).__init__()
-        self.underlying_dataset = underlying_dataset
-        self.keys = keys
+        self.underlying_dataset = underlying_dataset  # 原始数据集
+        self.keys = keys  # 子集的索引键列表
+    
     def __getitem__(self, key):
+        """获取指定索引位置的元素
+        
+        Args:
+            key: 在子集中的索引
+            
+        Returns:
+            原始数据集中对应索引位置的元素
+        """
         return self.underlying_dataset[self.keys[key]]
+    
     def __len__(self):
+        """返回子集的大小
+        
+        Returns:
+            int: 子集中元素的数量
+        """
         return len(self.keys)
 
 def split_dataset(dataset, n, seed=0):
+    """随机分割数据集为两部分
+    
+    将给定的数据集随机分割为两个子集，第一个子集大小为n，第二个子集包含剩余的所有样本。
+    使用固定种子确保分割结果可复现。
+    
+    Args:
+        dataset: 要分割的原始数据集
+        n: 第一个子集的大小
+        seed: 随机种子，默认为0
+        
+    Returns:
+        tuple: 包含两个_SplitDataset对象的元组，分别代表分割后的两个子集
     """
-    Return a pair of datasets corresponding to a random split of the given
-    dataset, with n datapoints in the first dataset and the rest in the last,
-    using the given random seed
-    """
-    assert(n <= len(dataset))
+    assert(n <= len(dataset))  # 确保第一个子集大小不超过原始数据集
+    
+    # 创建索引列表并随机打乱
     keys = list(range(len(dataset)))
-    np.random.RandomState(seed).shuffle(keys)
-    keys_1 = keys[:n]
-    keys_2 = keys[n:]
+    np.random.RandomState(seed).shuffle(keys)  # 使用固定种子打乱索引
+    
+    # 分割索引列表
+    keys_1 = keys[:n]  # 第一个子集的索引
+    keys_2 = keys[n:]  # 第二个子集的索引
+    
+    # 返回两个分割后的数据集
     return _SplitDataset(dataset, keys_1), _SplitDataset(dataset, keys_2)
 
 def random_pairs_of_minibatches(minibatches):
+    """生成随机的小批量数据对
+    
+    将输入的小批量列表随机打乱后，为每个小批量生成一个相邻的配对，
+    用于对比学习或跨域数据增强等任务。确保配对的数据量相等。
+    
+    Args:
+        minibatches: 小批量数据列表，每个元素是(数据,标签)元组
+        
+    Returns:
+        list: 包含((数据1,标签1), (数据2,标签2))元组的列表
+    """
+    # 生成小批量索引的随机排列
     perm = torch.randperm(len(minibatches)).tolist()
     pairs = []
 
+    # 为每个小批量创建一个配对
     for i in range(len(minibatches)):
+        # 选择下一个索引，最后一个与第一个配对
         j = i + 1 if i < (len(minibatches) - 1) else 0
 
+        # 获取配对的两个小批量数据和标签
         xi, yi = minibatches[perm[i]][0], minibatches[perm[i]][1]
         xj, yj = minibatches[perm[j]][0], minibatches[perm[j]][1]
 
+        # 确定两个小批量中较小的大小
         min_n = min(len(xi), len(xj))
 
+        # 截断到相同大小并添加到配对列表
         pairs.append(((xi[:min_n], yi[:min_n]), (xj[:min_n], yj[:min_n])))
 
     return pairs
@@ -210,30 +412,55 @@ def split_meta_train_test(minibatches, num_meta_test=1):
     return pairs
 
 def accuracy(network, loader, weights, device):
-    correct = 0
-    total = 0
-    weights_offset = 0
-
-    network.eval()
-    with torch.no_grad():
+    """计算模型在给定数据集上的准确率
+    
+    支持加权样本，可用于不平衡数据集的评估。
+    
+    Args:
+        network: 要评估的神经网络模型
+        loader: 数据加载器，提供批次数据和标签
+        weights: 样本权重列表，None表示所有样本权重相等
+        device: 计算设备（如'cuda'或'cpu'）
+        
+    Returns:
+        float: 加权准确率
+    """
+    correct = 0  # 正确预测计数
+    total = 0    # 总权重计数
+    weights_offset = 0  # 权重偏移量
+    
+    network.eval()  # 设置为评估模式
+    with torch.no_grad():  # 禁用梯度计算
         for x, y in loader:
+            # 将数据和标签移至指定设备
             x = x.to(device)
             y = y.to(device)
+            
+            # 获取模型预测
             p = network.predict(x)
+            
+            # 获取当前批次的样本权重
             if weights is None:
-                batch_weights = torch.ones(len(x))
+                batch_weights = torch.ones(len(x))  # 权重相等
             else:
+                # 从权重列表中提取当前批次对应的权重
                 batch_weights = weights[weights_offset : weights_offset + len(x)]
                 weights_offset += len(x)
+            
+            # 将权重移至相同设备
             batch_weights = batch_weights.to(device)
-            if p.size(1) == 1:
+            
+            # 根据输出维度判断是二分类还是多分类
+            if p.size(1) == 1:  # 二分类
                 correct += (p.gt(0).eq(y).float() * batch_weights.view(-1, 1)).sum().item()
-            else:
+            else:  # 多分类
                 correct += (p.argmax(1).eq(y).float() * batch_weights).sum().item()
+            
+            # 累加总权重
             total += batch_weights.sum().item()
-    network.train()
-
-    return correct / total
+    
+    network.train()  # 恢复训练模式
+    return correct / total  # 返回加权准确率
 
 class Tee:
     def __init__(self, fname, mode="a"):
@@ -250,14 +477,33 @@ class Tee:
         self.file.flush()
 
 class ParamDict(OrderedDict):
-    """Code adapted from https://github.com/Alok/rl_implementations/tree/master/reptile.
-    A dictionary where the values are Tensors, meant to represent weights of
-    a model. This subclass lets you perform arithmetic on weights directly."""
+    """支持张量运算的有序字典
+    
+    专门用于存储和操作模型参数（权重），支持参数之间的数学运算，
+    便于实现动量优化等算法。
+    """
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, *kwargs)
+        """初始化参数字典
+        
+        Args:
+            *args: 传递给OrderedDict的位置参数
+            **kwargs: 传递给OrderedDict的关键字参数
+        """
+        super().__init__(*args, **kwargs)
 
     def _prototype(self, other, op):
+        """应用二元运算符到参数字典
+        
+        通用方法，将给定的二元运算符应用到字典中的每个元素。
+        
+        Args:
+            other: 右操作数，可以是另一个字典或标量
+            op: 二元运算符函数（如operator.add, operator.mul等）
+            
+        Returns:
+            ParamDict: 包含运算结果的新参数字典
+        """
         if isinstance(other, Number):
             return ParamDict({k: op(v, other) for k, v in self.items()})
         elif isinstance(other, dict):
@@ -266,23 +512,69 @@ class ParamDict(OrderedDict):
             raise NotImplementedError
 
     def __add__(self, other):
+        """加法运算：self + other
+        
+        支持参数字典之间的加法或参数字典与标量的加法。
+        
+        Args:
+            other: 右操作数
+            
+        Returns:
+            ParamDict: 加法结果
+        """
         return self._prototype(other, operator.add)
 
     def __rmul__(self, other):
+        """乘法运算：other * self
+        
+        支持标量与参数字典的乘法。
+        
+        Args:
+            other: 左操作数（标量）
+            
+        Returns:
+            ParamDict: 乘法结果
+        """
         return self._prototype(other, operator.mul)
 
-    __mul__ = __rmul__
+    __mul__ = __rmul__  # 乘法运算的简写形式
 
     def __neg__(self):
+        """取负运算：-self
+        
+        Returns:
+            ParamDict: 每个参数都取负值的新参数字典
+        """
         return ParamDict({k: -v for k, v in self.items()})
 
     def __rsub__(self, other):
+        """减法运算：other - self
+        
+        支持标量与参数字典的减法或参数字典之间的减法。
+        实现为 a - b := a + (-b)
+        
+        Args:
+            other: 左操作数
+            
+        Returns:
+            ParamDict: 减法结果
+        """
         # a- b := a + (-b)
         return self.__add__(other.__neg__())
 
-    __sub__ = __rsub__
+    __sub__ = __rsub__  # 减法运算的简写形式
 
     def __truediv__(self, other):
+        """除法运算：self / other
+        
+        支持参数字典与标量的除法或参数字典之间的除法。
+        
+        Args:
+            other: 右操作数
+            
+        Returns:
+            ParamDict: 除法结果
+        """
         return self._prototype(other, operator.truediv)
 
 

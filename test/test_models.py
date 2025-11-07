@@ -2,24 +2,13 @@
 
 """Unit tests."""
 
-import argparse
 import itertools
-import json
-import os
-import subprocess
-import sys
-import time
 import unittest
-import uuid
 
-import torch
-
-from domainbed import datasets
-from domainbed import hparams_registry
-from domainbed import algorithms
-from domainbed import networks
-from domainbed.test import helpers
-
+import algorithms
+import datasets
+import hparams_registry
+from test import helpers
 from parameterized import parameterized
 
 

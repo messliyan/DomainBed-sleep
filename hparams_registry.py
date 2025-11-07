@@ -1,60 +1,103 @@
+"""超参数注册模块
+
+此模块负责定义和管理所有算法和数据集的超参数。
+它提供了一种统一的方式来管理：
+1. 默认超参数设置
+2. 随机超参数采样策略
+3. 算法特定和数据集特定的超参数配置
+
+超参数通过全局注册表进行管理，每个算法和数据集组合都有其对应的
+默认值和随机采样函数。这使得实验的配置和复现变得更加容易。
+"""
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 import numpy as np
-from domainbed.lib import misc
+from lib import misc
 
 
 def _define_hparam(hparams, hparam_name, default_val, random_val_fn):
+    """定义单个超参数并添加到注册表中
+    
+    Args:
+        hparams: 超参数字典
+        hparam_name: 超参数名称
+        default_val: 超参数默认值
+        random_val_fn: 随机值生成函数
+    """
     hparams[hparam_name] = (hparams, hparam_name, default_val, random_val_fn)
 
 
 def _hparams(algorithm, dataset, random_seed):
+    """获取指定算法和数据集的超参数配置
+    
+    此函数是超参数管理的核心，为每个算法和数据集组合定义默认超参数和
+    随机采样策略。超参数以（默认值，随机值）元组的形式存储。
+    
+    Args:
+        algorithm: 算法名称
+        dataset: 数据集名称
+        random_seed: 随机种子，用于生成可复现的随机超参数
+        
+    Returns:
+        包含所有超参数配置的字典
     """
-    Global registry of hyperparams. Each entry is a (default, random) tuple.
-    New algorithms / networks / etc. should add entries here.
-    """
+    # 小图像数据集列表，用于特殊处理
     SMALL_IMAGES = ['Debug28', 'RotatedMNIST', 'ColoredMNIST']
 
+    # 初始化超参数字典
     hparams = {}
 
     def _hparam(name, default_val, random_val_fn):
-        """Define a hyperparameter. random_val_fn takes a RandomState and
-        returns a random hyperparameter value."""
+        """内部函数：定义单个超参数
+        
+        Args:
+            name: 超参数名称
+            default_val: 默认值
+            random_val_fn: 接受RandomState对象并返回随机值的函数
+        """
+        # 确保超参数名称唯一
         assert(name not in hparams)
+        # 创建基于种子和名称的随机状态，确保可复现性
         random_state = np.random.RandomState(
             misc.seed_hash(random_seed, name)
         )
+        # 存储（默认值，随机值）元组
         hparams[name] = (default_val, random_val_fn(random_state))
 
-    # Unconditional hparam definitions.
-
-    _hparam('data_augmentation', True, lambda r: True)
-    _hparam('resnet18', False, lambda r: False)
-    _hparam('resnet50_augmix', True, lambda r: True)
-    _hparam('dinov2', False, lambda r: False)
-    _hparam('vit', False, lambda r: False)
-    _hparam('vit_attn_tune', False, lambda r: False)
-    _hparam('freeze_bn', False, lambda r: False)
-    _hparam('lars', False, lambda r: False)
-    _hparam('linear_steps', 500, lambda r: 500)
-    _hparam('resnet_dropout', 0., lambda r: r.choice([0., 0.1, 0.5]))
-    _hparam('vit_dropout', 0., lambda r: r.choice([0., 0.1, 0.5]))
-    _hparam('class_balanced', False, lambda r: False)
+    # 无条件超参数定义 - 适用于所有算法和数据集
+    # 数据增强相关
+    _hparam('data_augmentation', True, lambda r: True)  # 是否启用数据增强
+    # 模型架构相关
+    _hparam('resnet18', False, lambda r: False)  # 是否使用ResNet18
+    _hparam('resnet50_augmix', True, lambda r: True)  # 是否使用ResNet50+AugMix
+    _hparam('dinov2', False, lambda r: False)  # 是否使用DINOv2
+    _hparam('vit', False, lambda r: False)  # 是否使用Vision Transformer
+    _hparam('vit_attn_tune', False, lambda r: False)  # 是否微调ViT注意力
+    _hparam('freeze_bn', False, lambda r: False)  # 是否冻结批归一化层
+    # 训练策略相关
+    _hparam('lars', False, lambda r: False)  # 是否使用LARS优化器
+    _hparam('linear_steps', 500, lambda r: 500)  # 线性预热步数
+    # 正则化相关
+    _hparam('resnet_dropout', 0., lambda r: r.choice([0., 0.1, 0.5]))  # ResNet丢弃率
+    _hparam('vit_dropout', 0., lambda r: r.choice([0., 0.1, 0.5]))  # ViT丢弃率
+    # 分类器相关
+    _hparam('class_balanced', False, lambda r: False)  # 是否使用类别平衡
     # TODO: nonlinear classifiers disabled
     _hparam('nonlinear_classifier', False,
             lambda r: bool(r.choice([False, False])))
 
-    # Algorithm-specific hparam definitions. Each block of code below
-    # corresponds to exactly one algorithm.
+    # 算法特定超参数定义
+    # 每个代码块对应一种算法的超参数
 
-    if algorithm in ['DANN', 'CDANN']:
-        _hparam('lambda', 1.0, lambda r: 10**r.uniform(-2, 2))
-        _hparam('weight_decay_d', 0., lambda r: 10**r.uniform(-6, -2))
-        _hparam('d_steps_per_g_step', 1, lambda r: int(2**r.uniform(0, 3)))
-        _hparam('grad_penalty', 0., lambda r: 10**r.uniform(-2, 1))
-        _hparam('beta1', 0.5, lambda r: r.choice([0., 0.5]))
-        _hparam('mlp_width', 256, lambda r: int(2 ** r.uniform(6, 10)))
-        _hparam('mlp_depth', 3, lambda r: int(r.choice([3, 4, 5])))
-        _hparam('mlp_dropout', 0., lambda r: r.choice([0., 0.1, 0.5]))
+    # 1. 域对抗训练算法
+    if algorithm in ['DANN', 'CDANN']:  # 域对抗神经网络及其变体
+        _hparam('lambda', 1.0, lambda r: 10**r.uniform(-2, 2))  # 域对抗损失权重
+        _hparam('weight_decay_d', 0., lambda r: 10**r.uniform(-6, -2))  # 判别器权重衰减
+        _hparam('d_steps_per_g_step', 1, lambda r: int(2**r.uniform(0, 3)))  # 每个生成器步对应的判别器步数
+        _hparam('grad_penalty', 0., lambda r: 10**r.uniform(-2, 1))  # 梯度惩罚权重
+        _hparam('beta1', 0.5, lambda r: r.choice([0., 0.5]))  # Adam优化器的beta1参数
+        _hparam('mlp_width', 256, lambda r: int(2 ** r.uniform(6, 10)))  # MLP隐藏层宽度
+        _hparam('mlp_depth', 3, lambda r: int(r.choice([3, 4, 5])))  # MLP深度
+        _hparam('mlp_dropout', 0., lambda r: r.choice([0., 0.1, 0.5]))  # MLP丢弃率
 
     elif algorithm == 'Fish':
         _hparam('meta_lr', 0.5, lambda r:r.choice([0.05, 0.1, 0.5]))
@@ -97,8 +140,9 @@ def _hparams(algorithm, dataset, random_seed):
     elif algorithm == "GroupDRO":
         _hparam('groupdro_eta', 1e-2, lambda r: 10**r.uniform(-3, -1))
 
+    # 2. 分布匹配算法
     elif algorithm == "MMD" or algorithm == "CORAL" or algorithm == "CausIRL_CORAL" or algorithm == "CausIRL_MMD":
-        _hparam('mmd_gamma', 1., lambda r: 10**r.uniform(-1, 1))
+        _hparam('mmd_gamma', 1., lambda r: 10**r.uniform(-1, 1))  # MMD核宽度参数
 
     elif algorithm == "MLDG":
         _hparam('mldg_beta', 1., lambda r: 10**r.uniform(-1, 1))
@@ -112,43 +156,10 @@ def _hparams(algorithm, dataset, random_seed):
         _hparam('vrex_penalty_anneal_iters', 500,
                 lambda r: int(10**r.uniform(0, 4)))
 
-    elif algorithm == "SD":
-        _hparam('sd_reg', 0.1, lambda r: 10**r.uniform(-5, -1))
 
-    elif algorithm == "ANDMask":
-        _hparam('tau', 1, lambda r: r.uniform(0.5, 1.))
 
-    elif algorithm == "IGA":
-        _hparam('penalty', 1000, lambda r: 10**r.uniform(1, 5))
-
-    elif algorithm == "SANDMask":
-        _hparam('tau', 1.0, lambda r: r.uniform(0.0, 1.))
-        _hparam('k', 1e+1, lambda r: 10**r.uniform(-3, 5))
-
-    elif algorithm == "Fishr":
-        _hparam('lambda', 1000., lambda r: 10**r.uniform(1., 4.))
-        _hparam('penalty_anneal_iters', 1500, lambda r: int(r.uniform(0., 5000.)))
-        _hparam('ema', 0.95, lambda r: r.uniform(0.90, 0.99))
-
-    elif algorithm == "TRM":
-        _hparam('cos_lambda', 1e-4, lambda r: 10 ** r.uniform(-5, 0))
-        _hparam('iters', 200, lambda r: int(10 ** r.uniform(0, 4)))
-        _hparam('groupdro_eta', 1e-2, lambda r: 10 ** r.uniform(-3, -1))
-
-    elif algorithm == "IB_ERM":
-        _hparam('ib_lambda', 1e2, lambda r: 10**r.uniform(-1, 5))
-        _hparam('ib_penalty_anneal_iters', 500,
-                lambda r: int(10**r.uniform(0, 4)))
-
-    elif algorithm == "IB_IRM":
-        _hparam('irm_lambda', 1e2, lambda r: 10**r.uniform(-1, 5))
-        _hparam('irm_penalty_anneal_iters', 500,
-                lambda r: int(10**r.uniform(0, 4)))
-        _hparam('ib_lambda', 1e2, lambda r: 10**r.uniform(-1, 5))
-        _hparam('ib_penalty_anneal_iters', 500,
-                lambda r: int(10**r.uniform(0, 4)))
-
-    elif algorithm == "CAD" or algorithm == "CondCAD":
+    # 3. 因果启发算法
+    elif algorithm == "CAD" or algorithm == "CondCAD":  # 因果自适应判别器
         _hparam('lmbda', 1e-1, lambda r: r.choice([1e-4, 1e-3, 1e-2, 1e-1, 1, 1e1, 1e2]))
         _hparam('temperature', 0.1, lambda r: r.choice([0.05, 0.1]))
         _hparam('is_normalized', False, lambda r: False)
@@ -199,9 +210,9 @@ def _hparams(algorithm, dataset, random_seed):
         _hparam('mlp_dropout', 0., lambda r: r.choice([0]))
 
 
-    # Dataset-and-algorithm-specific hparam definitions. Each block of code
-    # below corresponds to exactly one hparam. Avoid nested conditionals.
-
+    # 数据集和算法特定的超参数定义
+    # 以下代码块对应特定的超参数，根据数据集和算法进行调整
+    # 基础学习率
     if dataset in SMALL_IMAGES:
         if algorithm == "ADRMX":
             _hparam('lr', 3e-3, lambda r: r.choice([5e-4, 1e-3, 2e-3, 3e-3]))
@@ -251,8 +262,31 @@ def _hparams(algorithm, dataset, random_seed):
 
 
 def default_hparams(algorithm, dataset):
+    """获取指定算法和数据集的默认超参数
+    
+    Args:
+        algorithm: 算法名称
+        dataset: 数据集名称
+        
+    Returns:
+        只包含默认超参数值的字典
+    """
+    # 从_hparams函数获取默认值，忽略随机值
     return {a: b for a, (b, c) in _hparams(algorithm, dataset, 0).items()}
 
 
 def random_hparams(algorithm, dataset, seed):
+    """获取指定算法和数据集的随机超参数
+    
+    基于给定的随机种子生成一组随机超参数，确保可复现性。
+    
+    Args:
+        algorithm: 算法名称
+        dataset: 数据集名称
+        seed: 随机种子
+        
+    Returns:
+        只包含随机超参数值的字典
+    """
+    # 从_hparams函数获取随机值，忽略默认值
     return {a: c for a, (b, c) in _hparams(algorithm, dataset, seed).items()}

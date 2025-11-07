@@ -2,22 +2,11 @@
 
 """Unit tests."""
 
-import argparse
-import itertools
-import json
-import os
-import subprocess
-import sys
-import time
 import unittest
-import uuid
 
-import torch
+import model_selection
+from lib.query import Q
 
-from domainbed import model_selection
-from domainbed.lib.query import Q
-
-from parameterized import parameterized
 
 def make_record(step, hparams_seed, envs):
     """envs is a list of (in_acc, out_acc, is_test_env) tuples"""

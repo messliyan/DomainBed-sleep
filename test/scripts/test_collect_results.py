@@ -1,27 +1,13 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 
-import argparse
-import itertools
-import json
-import os
+import io
 import subprocess
 import sys
-import time
-import unittest
-import uuid
-
-import torch
-
-from domainbed import datasets
-from domainbed import hparams_registry
-from domainbed import algorithms
-from domainbed import networks
-from domainbed.test import helpers
-from domainbed.scripts import collect_results
-
-from parameterized import parameterized
-import io
 import textwrap
+import unittest
+
+from scripts import collect_results
+
 
 class TestCollectResults(unittest.TestCase):
 

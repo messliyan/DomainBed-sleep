@@ -1,13 +1,12 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 
 import collections
-
 import json
 import os
 
 import tqdm
+from query import Q
 
-from domainbed.lib.query import Q
 
 def load_records(path):
     records = []

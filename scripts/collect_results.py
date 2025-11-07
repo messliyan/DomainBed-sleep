@@ -1,27 +1,17 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 
-import collections
-
 
 import argparse
-import functools
-import glob
-import pickle
-import itertools
-import json
 import os
-import random
 import sys
 
 import numpy as np
-import tqdm
+import algorithms
+import datasets
+import model_selection
+from lib import misc, reporting
+from lib.query import Q
 
-from domainbed import datasets
-from domainbed import algorithms
-from domainbed.lib import misc, reporting
-from domainbed import model_selection
-from domainbed.lib.query import Q
-import warnings
 
 def remove_key(d,key):
     new_d = d.copy()

@@ -7,19 +7,17 @@ import os
 import random
 import sys
 import time
-import uuid
 
-import numpy as np
 import PIL
+import numpy as np
 import torch
-import torchvision
 import torch.utils.data
-
-from domainbed import datasets
-from domainbed import hparams_registry
-from domainbed import algorithms
-from domainbed.lib import misc
-from domainbed.lib.fast_data_loader import InfiniteDataLoader, FastDataLoader, InfiniteDataLoaderWithoutReplacement
+import torchvision
+import algorithms
+import datasets
+import hparams_registry
+from lib import misc
+from lib.fast_data_loader import FastDataLoader, InfiniteDataLoaderWithoutReplacement
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Domain generalization')
@@ -50,6 +48,7 @@ if __name__ == "__main__":
     parser.add_argument('--save_model_every_checkpoint', action='store_true')
     parser.add_argument('--auto_lr', action='store_true')
     args = parser.parse_args()
+    
 
     # If we ever want to implement checkpointing, just persist these values
     # every once in a while, and then load them from disk here.

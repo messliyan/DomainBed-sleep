@@ -6,26 +6,19 @@ Run sweeps
 
 import argparse
 import copy
-import getpass
 import hashlib
 import json
 import os
-import random
+import shlex
 import shutil
-import time
-import uuid
 
 import numpy as np
-import torch
-
-from domainbed import datasets
-from domainbed import hparams_registry
-from domainbed import algorithms
-from domainbed.lib import misc
-from domainbed import command_launchers
-
 import tqdm
-import shlex
+import algorithms
+import command_launchers
+import datasets
+from lib import misc
+
 
 class Job:
     NOT_LAUNCHED = 'Not launched'
@@ -39,7 +32,7 @@ class Job:
 
         self.train_args = copy.deepcopy(train_args)
         self.train_args['output_dir'] = self.output_dir
-        command = ['python', '-m', 'domainbed.scripts.train']
+        command = ['python', '-m', 'scripts.train']
         for k, v in sorted(self.train_args.items()):
             if isinstance(v, list):
                 v = ' '.join([str(v_) for v_ in v])

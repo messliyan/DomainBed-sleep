@@ -15,6 +15,9 @@
           <mappings>
             <mapping deploy="/home/hhao/Jiabin/DomainBed-sleep" local="$PROJECT_DIR$" />
           </mappings>
+          <excludedPaths>
+            <excludedPath local="true" path="$PROJECT_DIR$/eeg_data" />
+          </excludedPaths>
         </serverdata>
       </paths>
       <paths name="root@10.108.17.23:786 password">

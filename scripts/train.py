@@ -16,8 +16,11 @@ from lib import misc
 from lib.fast_data_loader import InfiniteDataLoader, FastDataLoader
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Domain generalization')
-    parser.add_argument('--data_dir', type=str, default="./eeg_data")
+   
+    parser = argparse.ArgumentParser(description='Domain adaptation')
+    parser.add_argument('--data_dir', type=str, default='eeg_data', 
+                        help='数据目录路径，相对路径将被解析为项目根目录下的路径')
+
     parser.add_argument('--dataset', type=str, default="SleepDataset")
     parser.add_argument('--algorithm', type=str, default="DANN")
     parser.add_argument('--task', type=str, default="domain_adaptation",
@@ -43,6 +46,15 @@ if __name__ == "__main__":
     parser.add_argument('--skip_model_save', action='store_true')
     parser.add_argument('--save_model_every_checkpoint', action='store_true')
     args = parser.parse_args()
+    
+    # 智能处理数据路径：如果是相对路径，则视为相对于项目根目录
+    if args.data_dir and not os.path.isabs(args.data_dir):
+        PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        args.data_dir = os.path.join(PROJECT_ROOT, args.data_dir)
+    
+    # 如果我们想实现检查点功能，只需每隔一段时间保存这些值，然后从磁盘加载它们。
+    start_step = 0
+    algorithm_dict = None
     
     # If we ever want to implement checkpointing, just persist these values
     # every once in a while, and then load them from disk here.

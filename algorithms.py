@@ -337,9 +337,6 @@ class URM(ERM):
 
     def _modify_generator_output(self):
         print('--> Modifying encoder output:', self.hparams['urm_generator_output'])
-        
-        # from lib import wide_resnet
-        # assert type(self.featurizer) in [networks.MLP, networks.MNIST_CNN, wide_resnet.Wide_ResNet, networks.ResNet]
 
         if self.hparams['urm_generator_output'] == 'tanh':
             self.featurizer.activation = nn.Tanh()
@@ -886,32 +883,7 @@ class SagNet(Algorithm):
             num_classes,
             self.hparams['nonlinear_classifier'])
 
-        # # This commented block of code implements something closer to the
-        # # original paper, but is specific to ResNet and puts in disadvantage
-        # # the other algorithms.
-        # resnet_c = networks.Featurizer(input_shape, self.hparams)
-        # resnet_s = networks.Featurizer(input_shape, self.hparams)
-        # # featurizer network
-        # self.network_f = torch.nn.Sequential(
-        #         resnet_c.network.conv1,
-        #         resnet_c.network.bn1,
-        #         resnet_c.network.relu,
-        #         resnet_c.network.maxpool,
-        #         resnet_c.network.layer1,
-        #         resnet_c.network.layer2,
-        #         resnet_c.network.layer3)
-        # # content network
-        # self.network_c = torch.nn.Sequential(
-        #         resnet_c.network.layer4,
-        #         resnet_c.network.avgpool,
-        #         networks.Flatten(),
-        #         resnet_c.network.fc)
-        # # style network
-        # self.network_s = torch.nn.Sequential(
-        #         resnet_s.network.layer4,
-        #         resnet_s.network.avgpool,
-        #         networks.Flatten(),
-        #         resnet_s.network.fc)
+
 
         def opt(p):
             return torch.optim.Adam(p, lr=hparams["lr"],

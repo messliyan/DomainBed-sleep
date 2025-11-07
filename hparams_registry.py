@@ -64,21 +64,6 @@ def _hparams(algorithm, dataset, random_seed):
         hparams[name] = (default_val, random_val_fn(random_state))
 
     # 无条件超参数定义 - 适用于所有算法和数据集
-    # 数据增强相关
-    _hparam('data_augmentation', True, lambda r: True)  # 是否启用数据增强
-    # 模型架构相关
-    _hparam('resnet18', False, lambda r: False)  # 是否使用ResNet18
-    _hparam('resnet50_augmix', True, lambda r: True)  # 是否使用ResNet50+AugMix
-    _hparam('dinov2', False, lambda r: False)  # 是否使用DINOv2
-    _hparam('vit', False, lambda r: False)  # 是否使用Vision Transformer
-    _hparam('vit_attn_tune', False, lambda r: False)  # 是否微调ViT注意力
-    _hparam('freeze_bn', False, lambda r: False)  # 是否冻结批归一化层
-    # 训练策略相关
-    _hparam('lars', False, lambda r: False)  # 是否使用LARS优化器
-    _hparam('linear_steps', 500, lambda r: 500)  # 线性预热步数
-    # 正则化相关
-    _hparam('resnet_dropout', 0., lambda r: r.choice([0., 0.1, 0.5]))  # ResNet丢弃率
-    _hparam('vit_dropout', 0., lambda r: r.choice([0., 0.1, 0.5]))  # ViT丢弃率
     # 分类器相关
     _hparam('class_balanced', False, lambda r: False)  # 是否使用类别平衡
     # TODO: nonlinear classifiers disabled
@@ -95,9 +80,7 @@ def _hparams(algorithm, dataset, random_seed):
         _hparam('d_steps_per_g_step', 1, lambda r: int(2**r.uniform(0, 3)))  # 每个生成器步对应的判别器步数
         _hparam('grad_penalty', 0., lambda r: 10**r.uniform(-2, 1))  # 梯度惩罚权重
         _hparam('beta1', 0.5, lambda r: r.choice([0., 0.5]))  # Adam优化器的beta1参数
-        _hparam('mlp_width', 256, lambda r: int(2 ** r.uniform(6, 10)))  # MLP隐藏层宽度
-        _hparam('mlp_depth', 3, lambda r: int(r.choice([3, 4, 5])))  # MLP深度
-        _hparam('mlp_dropout', 0., lambda r: r.choice([0., 0.1, 0.5]))  # MLP丢弃率
+        _hparam('linear_steps', 500, lambda r: int(10**r.uniform(2, 4)))  # 线性预热步数
 
     elif algorithm == 'Fish':
         _hparam('meta_lr', 0.5, lambda r:r.choice([0.05, 0.1, 0.5]))

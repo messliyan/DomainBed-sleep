@@ -17,7 +17,7 @@ from lib.fast_data_loader import InfiniteDataLoader, FastDataLoader
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Domain generalization')
-    parser.add_argument('--data_dir', type=str, default="./dataset")
+    parser.add_argument('--data_dir', type=str, default="./eeg_data")
     parser.add_argument('--dataset', type=str, default="SleepDataset")
     parser.add_argument('--algorithm', type=str, default="DANN")
     parser.add_argument('--task', type=str, default="domain_adaptation",
@@ -113,11 +113,9 @@ if __name__ == "__main__":
     print("Environment:")
     print("\tPython: {}".format(sys.version.split(" ")[0]))
     print("\tPyTorch: {}".format(torch.__version__))
-    print("\tTorchvision: {}".format(torchvision.__version__))
     print("\tCUDA: {}".format(torch.version.cuda))
     print("\tCUDNN: {}".format(torch.backends.cudnn.version()))
     print("\tNumPy: {}".format(np.__version__))
-    print("\tPIL: {}".format(PIL.__version__))
 
     print('Args:')
     for k, v in sorted(vars(args).items()):

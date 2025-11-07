@@ -252,7 +252,7 @@ class SleepDataset(MultipleEnvironmentEEGDataset):
             test_envs: 测试环境的索引列表
             hparams: 超参数字典
         """
-        # 使用固定的dataset路径
-        self.dir = os.path.join(root, "/")
+        # 直接使用传入的root路径作为数据集根目录
+        self.dir = root
         # 调用父类初始化方法，加载数据集
         super().__init__(self.dir, test_envs, hparams)

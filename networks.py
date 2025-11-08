@@ -59,7 +59,8 @@ class MRCNN(nn.Module):
 
     使用两个不同分辨率的卷积路径提取脑电信号的多尺度特征。
     """
-
+    n_outputs = 10240  # 更新为实际计算的输出维度
+    
     def __init__(self):
         """初始化多分辨率CNN
         """
@@ -117,13 +118,14 @@ class MRCNN(nn.Module):
         x1 = self.features1(x)
         x2 = self.features2(x)
         x_concat = torch.cat((x1, x2), dim=2)
-        return x_concat
+        x_view = x_concat.view(len(x_concat), -1)
+        return x_view
 
 
 
 def Featurizer(input_shape, hparams):
     """Auto-select an appropriate featurizer for the given input shape."""
-    if len(input_shape) == 1:
+    if len(input_shape) == 2:
         return MRCNN();
     else:
         raise NotImplementedError

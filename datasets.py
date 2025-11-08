@@ -147,9 +147,15 @@ class MultipleEnvironmentEEGDataset(MultipleDomainDataset):
             hparams: 超参数字典
         """
         super().__init__()
-        # 动态获取环境列表（子目录名称）
-        environments = [f.name for f in os.scandir(root) if f.is_dir()]
-        environments = sorted(environments)  # 排序确保环境顺序一致
+        # 优先使用子类定义的ENVIRONMENTS列表，如果存在的话
+        if hasattr(self, 'ENVIRONMENTS') and self.ENVIRONMENTS is not None:
+            environments = self.ENVIRONMENTS
+            print(f"使用预定义的环境列表: {environments}")
+        else:
+            # 否则动态获取环境列表（子目录名称）
+            environments = [f.name for f in os.scandir(root) if f.is_dir()]
+            environments = sorted(environments)  # 排序确保环境顺序一致
+            print(f"动态扫描到的环境列表: {environments}")
    
         # 初始化数据集列表，每个元素对应一个环境的数据集
         self.datasets = []
@@ -163,9 +169,17 @@ class MultipleEnvironmentEEGDataset(MultipleDomainDataset):
             
             # 创建环境数据集
             if len(env_data) > 0:
-                # 将NumPy数组转换为PyTorch张量，并添加通道维度
+                # 将NumPy数组转换为PyTorch张量，并确保正确的维度格式
+                data_tensor = torch.FloatTensor(env_data)
+                # 移除可能存在的额外维度
+                data_tensor = torch.squeeze(data_tensor)
+                # 确保数据是二维的 [N, 3000]，然后添加通道维度
+                if len(data_tensor.shape) == 1:
+                    data_tensor = data_tensor.reshape(-1, 3000)
+             
+                data_tensor = data_tensor.unsqueeze(1)
                 self.datasets.append(TensorDataset(
-                    torch.FloatTensor(env_data).unsqueeze(1),  # 添加通道维度，形状变为 [N, 1, 3000]
+                    data_tensor,
                     torch.LongTensor(env_labels)  # 标签应为长整型
                 ))
                 print(f"成功加载环境 {environment}: {len(env_data)} 个样本")

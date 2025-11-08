@@ -4,6 +4,7 @@
     <content url="file://$MODULE_DIR$">
       <sourceFolder url="file://$MODULE_DIR$" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/eeg_data" />
+      <excludeFolder url="file://$MODULE_DIR$/scripts/results" />
     </content>
     <orderEntry type="jdk" jdkName="Remote Python 3.8.20 (sftp://hhao@10.108.17.28:786/home/hhao/hcf/miniconda3/envs/eeg_domain_adapt/bin/python)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />

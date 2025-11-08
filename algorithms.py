@@ -13,14 +13,14 @@
 """
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 
-import copy
 from collections import OrderedDict
 
-import numpy as np
 import torch
 import torch.autograd as autograd
 import torch.nn as nn
 import torch.nn.functional as F
+
+import networks
 
 # 尝试导入backpack库，用于计算批量梯度
 try:
@@ -30,7 +30,6 @@ except:
     backpack = None
 
 # 导入网络模块和工具函数
-import MRCNN
 from lib.misc import (
     random_pairs_of_minibatches, split_meta_train_test, ParamDict,
     MovingAverage, ErmPlusPlusMovingAvg, l2_between_dicts, proj, Nonparametric,
@@ -178,7 +177,7 @@ class ERM(Algorithm):
         loss.backward()
         self.optimizer.step()
 
-        
+        return {'loss': loss.item()}
 
     def predict(self, x):
         """预测输入数据的标签
@@ -269,22 +268,36 @@ class ERMPlusPlus(Algorithm, ErmPlusPlusMovingAvg):
         ErmPlusPlusMovingAvg.__init__(self, self.network)
 
     def update(self, minibatches, unlabeled=None):
-
+        """执行一步更新
+        
+        根据训练步数选择使用主优化器或线性优化器，并更新移动平均网络。
+        
+        Args:
+            minibatches: (x, y)元组列表
+            unlabeled: 未使用
+            
+        Returns:
+            包含损失值的字典
+        """
+        # 根据训练步数选择优化器
         if self.global_iter > self.hparams["linear_steps"]:
             selected_optimizer = self.optimizer
         else:
             selected_optimizer = self.linear_optimizer
 
-
-
+        # 合并所有环境的输入和标签
         all_x = torch.cat([x for x, y in minibatches])
         all_y = torch.cat([y for x, y in minibatches])
+        # 计算交叉熵损失
         loss = F.cross_entropy(self.network(all_x), all_y)
 
+        # 梯度更新
         selected_optimizer.zero_grad()
         loss.backward()
         selected_optimizer.step()
+        # 更新移动平均
         self.update_sma()
+        # 如果不冻结BN层，更新移动平均网络的BN统计量
         if not self.hparams["freeze_bn"]:
             self.network_sma.train()
             self.network_sma(all_x)
@@ -292,93 +305,148 @@ class ERMPlusPlus(Algorithm, ErmPlusPlusMovingAvg):
         return {'loss': loss.item()}
 
     def predict(self, x):
+        """预测输入数据的标签
+        
+        使用移动平均网络进行预测。
+        
+        Args:
+            x: 输入数据
+            
+        Returns:
+            预测的对数概率
+        """
         self.network_sma.eval()
         return self.network_sma(x)
 
-    def set_lr(self, eval_loaders_iid=None, schedule=None,device=None):
+    def set_lr(self, eval_loaders_iid=None, schedule=None, device=None):
+        """设置学习率
+        
+        根据验证损失调整学习率，或使用给定的学习率调度方案。
+        
+        Args:
+            eval_loaders_iid: 验证数据加载器列表
+            schedule: 可选的学习率调度方案
+            device: 计算设备
+            
+        Returns:
+            更新后的学习率调度方案
+        """
         with torch.no_grad():
-             if self.global_iter > self.hparams["linear_steps"]:
-                 if schedule is None:
-                     self.network_sma.eval()
-                     val_losses = []
-                     for loader in eval_loaders_iid:
-                         loss = 0.0
-                         for x, y in loader:
-                             x = x.to(device)
-                             y = y.to(device)
-                             loss += F.cross_entropy(self.network_sma(x),y)
-                         val_losses.append(loss / len(loader ))
-                     val_loss = torch.mean(torch.stack(val_losses))
-                     self.scheduler.step(val_loss)
-                     self.lr_schedule.append(self.scheduler._last_lr)
-                     if len(self.lr_schedule) > 1:
-                         if self.lr_schedule[-1] !=  self.lr_schedule[-2]:
+            # 只在线性训练步数后调整学习率
+            if self.global_iter > self.hparams["linear_steps"]:
+                if schedule is None:
+                    # 计算验证损失
+                    self.network_sma.eval()
+                    val_losses = []
+                    for loader in eval_loaders_iid:
+                        loss = 0.0
+                        for x, y in loader:
+                            x = x.to(device)
+                            y = y.to(device)
+                            loss += F.cross_entropy(self.network_sma(x), y)
+                        val_losses.append(loss / len(loader))
+                    val_loss = torch.mean(torch.stack(val_losses))
+                    # 更新学习率
+                    self.scheduler.step(val_loss)
+                    self.lr_schedule.append(self.scheduler._last_lr)
+                    # 记录学习率变化次数
+                    if len(self.lr_schedule) > 1:
+                        if self.lr_schedule[-1] != self.lr_schedule[-2]:
                             self.lr_schedule_changes += 1
-                     if self.lr_schedule_changes == 3:
-                         self.lr_schedule[-1] = [0.0]
-                     return self.lr_schedule
-                 else:
-                     self.optimizer.param_groups[0]['lr'] = (torch.Tensor(schedule[0]).requires_grad_(False))[0]
-                     schedule = schedule[1:]
-             return schedule
+                    # 如果学习率变化超过3次，将学习率设为0
+                    if self.lr_schedule_changes == 3:
+                        self.lr_schedule[-1] = [0.0]
+                    return self.lr_schedule
+                else:
+                    # 使用给定的学习率调度方案
+                    self.optimizer.param_groups[0]['lr'] = (torch.Tensor(schedule[0]).requires_grad_(False))[0]
+                    schedule = schedule[1:]
+            return schedule
 
 class URM(ERM):
     """
-    Implementation of Uniform Risk Minimization, as seen in Uniformly Distributed Feature Representations for
-    Fair and Robust Learning. TMLR 2024 (https://openreview.net/forum?id=PgLbS5yp8n)
+    均匀风险最小化算法实现
+    来自论文: Uniformly Distributed Feature Representations for Fair and Robust Learning (TMLR 2024)
     """
     def __init__(self, input_shape, num_classes, num_domains, hparams):
+        """初始化URM算法
+        
+        Args:
+            input_shape: 输入数据的形状
+            num_classes: 类别数量
+            num_domains: 域数量
+            hparams: 超参数字典
+        """
+        # 初始化基础ERM组件
         ERM.__init__(self, input_shape, num_classes, num_domains, hparams)
 
-        # setup discriminator model for URM adversarial training
+        # 设置对抗训练所需的判别器模型
         self._setup_adversarial_net()
 
+        # 使用不降维的交叉熵损失
         self.loss = torch.nn.CrossEntropyLoss(reduction="none")
 
     def _modify_generator_output(self):
+        """修改生成器输出激活函数
+        
+        根据超参数选择不同的激活函数。
+        """
         print('--> Modifying encoder output:', self.hparams['urm_generator_output'])
 
         if self.hparams['urm_generator_output'] == 'tanh':
             self.featurizer.activation = nn.Tanh()
-
         elif self.hparams['urm_generator_output'] == 'sigmoid':
             self.featurizer.activation = nn.Sigmoid()
-        
         elif self.hparams['urm_generator_output'] == 'identity':
             self.featurizer.activation = nn.Identity()
-
         elif self.hparams['urm_generator_output'] == 'relu':
             self.featurizer.activation = nn.ReLU()
-
         else:
             raise Exception('unrecognized output activation: %s' % self.hparams['urm_generator_output'])
 
     def _setup_adversarial_net(self):
+        """设置对抗网络
+        
+        初始化判别器及其优化器，并修改生成器输出。
+        """
         print('--> Initializing discriminator <--')        
         self.discriminator = self._init_discriminator()
-        self.discriminator_loss = torch.nn.BCEWithLogitsLoss(reduction="mean") # apply on logit
+        # 使用BCEWithLogitsLoss，它更数值稳定
+        self.discriminator_loss = torch.nn.BCEWithLogitsLoss(reduction="mean")
 
-        # featurizer optimized by self.optimizer only
+        # 为判别器创建优化器
         if self.hparams["urm_discriminator_optimizer"] == 'sgd':
-            self.discriminator_opt = torch.optim.SGD(self.discriminator.parameters(), lr=self.hparams['urm_discriminator_lr'], \
-                weight_decay=self.hparams['weight_decay'], momentum=0.9)
+            self.discriminator_opt = torch.optim.SGD(
+                self.discriminator.parameters(),
+                lr=self.hparams['urm_discriminator_lr'],
+                weight_decay=self.hparams['weight_decay'],
+                momentum=0.9)
         elif self.hparams["urm_discriminator_optimizer"] == 'adam':
-            self.discriminator_opt = torch.optim.Adam(self.discriminator.parameters(), lr=self.hparams['urm_discriminator_lr'], \
+            self.discriminator_opt = torch.optim.Adam(
+                self.discriminator.parameters(),
+                lr=self.hparams['urm_discriminator_lr'],
                 weight_decay=self.hparams['weight_decay'])
         else:
             raise Exception('%s unimplemented' % self.hparams["urm_discriminator_optimizer"])
 
+        # 修改生成器输出
         self._modify_generator_output()
-        self.sigmoid = nn.Sigmoid() # to compute discriminator acc.
+        # 用于计算判别器准确率
+        self.sigmoid = nn.Sigmoid()
             
     def _init_discriminator(self):
-        """
-        3 hidden layer MLP
+        """初始化判别器网络
+        
+        创建一个3层隐藏层的MLP作为判别器。
+        
+        Returns:
+            判别器网络
         """
         model = nn.Sequential()
         model.add_module("dense1", nn.Linear(self.featurizer.n_outputs, 100))
         model.add_module("act1", nn.LeakyReLU())
 
+        # 添加额外的隐藏层
         for _ in range(self.hparams['urm_discriminator_hidden_layers']):            
             model.add_module("dense%d" % (2+_), nn.Linear(100, 100))
             model.add_module("act2%d" % (2+_), nn.LeakyReLU())
@@ -387,142 +455,235 @@ class URM(ERM):
         return model
 
     def _generate_noise(self, feats):
-        """
-        If U is a random variable uniformly distributed on [0, 1), then (b-a)*U + a is uniformly distributed on [a, b).
+        """生成均匀噪声
+        
+        生成与特征相同形状的均匀分布噪声。
+        
+        Args:
+            feats: 输入特征
+            
+        Returns:
+            生成的噪声
         """
         if self.hparams['urm_generator_output'] == 'tanh':
-            a,b = -1,1
+            a, b = -1, 1
         elif self.hparams['urm_generator_output'] == 'relu':
-            a,b = 0,1
+            a, b = 0, 1
         elif self.hparams['urm_generator_output'] == 'sigmoid':
-            a,b = 0,1
+            a, b = 0, 1
         else:
             raise Exception('unrecognized output activation: %s' % self.hparams['urm_generator_output'])
 
-        uniform_noise = torch.rand(feats.size(), dtype=feats.dtype, layout=feats.layout, device=feats.device) # U~[0,1]
-        n = ((b-a) * uniform_noise) + a # n ~ [a,b)
+        # 生成[0,1)均匀分布，然后映射到[a,b)
+        uniform_noise = torch.rand(feats.size(), dtype=feats.dtype, layout=feats.layout, device=feats.device)
+        n = ((b-a) * uniform_noise) + a
         return n
 
-    def _generate_soft_labels(self, size, device, a ,b):
-        # returns size random numbers in [a,b]
-         uniform_noise = torch.rand(size, device=device) # U~[0,1]
-         return ((b-a) * uniform_noise) + a
+    def _generate_soft_labels(self, size, device, a, b):
+        """生成软标签
+        
+        生成指定范围内的随机数作为软标签。
+        
+        Args:
+            size: 标签大小
+            device: 计算设备
+            a: 范围下限
+            b: 范围上限
+            
+        Returns:
+            生成的软标签
+        """
+        uniform_noise = torch.rand(size, device=device)
+        return ((b-a) * uniform_noise) + a
 
     def get_accuracy(self, y_true, y_prob):
-        # y_prob is binary probability
+        """计算二分类准确率
+        
+        Args:
+            y_true: 真实标签
+            y_prob: 预测概率
+            
+        Returns:
+            准确率
+        """
         assert y_true.ndim == 1 and y_true.size() == y_prob.size()
         y_prob = y_prob > 0.5
         return (y_true == y_prob).sum().item() / y_true.size(0)
 
     def return_feats(self, x):
+        """提取特征
+        
+        Args:
+            x: 输入数据
+            
+        Returns:
+            提取的特征
+        """
         return self.featurizer(x)
 
     def _update_discriminator(self, x, y, feats):
-        # feats = self.return_feats(x)
-        feats = feats.detach() # don't backbrop through encoder in this step
+        """更新判别器
+        
+        使用真实噪声和生成的特征更新判别器。
+        
+        Args:
+            x: 输入数据
+            y: 标签
+            feats: 提取的特征
+        """
+        # 分离特征，不通过编码器反向传播
+        feats = feats.detach()
+        # 生成噪声
         noise = self._generate_noise(feats)
         
-        noise_logits = self.discriminator(noise) # (N,1)
-        feats_logits = self.discriminator(feats) # (N,1)
+        # 计算判别器输出
+        noise_logits = self.discriminator(noise)
+        feats_logits = self.discriminator(feats)
 
-        # hard targets
-        hard_true_y = torch.tensor([1] * noise.shape[0], device=noise.device, dtype=noise.dtype) # [1,1...1] noise is true
-        hard_fake_y = torch.tensor([0] * feats.shape[0], device=feats.device, dtype=feats.dtype) # [0,0...0] feats are fake (generated)
+        # 创建硬标签
+        hard_true_y = torch.tensor([1] * noise.shape[0], device=noise.device, dtype=noise.dtype)
+        hard_fake_y = torch.tensor([0] * feats.shape[0], device=feats.device, dtype=feats.dtype)
 
+        # 如果启用标签平滑，使用软标签
         if self.hparams['urm_discriminator_label_smoothing']:
-            # label smoothing in discriminator
-            soft_true_y = self._generate_soft_labels(noise.shape[0], noise.device, 1-self.hparams['urm_discriminator_label_smoothing'], 1.0) # random labels in range
-            soft_fake_y = self._generate_soft_labels(feats.shape[0], feats.device, 0, 0+self.hparams['urm_discriminator_label_smoothing']) # random labels in range
+            soft_true_y = self._generate_soft_labels(noise.shape[0], noise.device, 1-self.hparams['urm_discriminator_label_smoothing'], 1.0)
+            soft_fake_y = self._generate_soft_labels(feats.shape[0], feats.device, 0, 0+self.hparams['urm_discriminator_label_smoothing'])
             true_y = soft_true_y
             fake_y = soft_fake_y
         else:
             true_y = hard_true_y
             fake_y = hard_fake_y
 
-        noise_loss = self.discriminator_loss(noise_logits.squeeze(1), true_y) # pass logits to BCEWithLogitsLoss
-        feats_loss = self.discriminator_loss(feats_logits.squeeze(1), fake_y) # pass logits to BCEWithLogitsLoss
-
+        # 计算损失
+        noise_loss = self.discriminator_loss(noise_logits.squeeze(1), true_y)
+        feats_loss = self.discriminator_loss(feats_logits.squeeze(1), fake_y)
         d_loss = 1*noise_loss + self.hparams['urm_adv_lambda']*feats_loss
 
-        # update discriminator
+        # 更新判别器
         self.discriminator_opt.zero_grad()
         d_loss.backward()
         self.discriminator_opt.step()
 
     def _compute_loss(self, x, y):
+        """计算总损失
+        
+        包括分类损失和对抗损失。
+        
+        Args:
+            x: 输入数据
+            y: 标签
+            
+        Returns:
+            总损失和提取的特征
+        """
         feats = self.return_feats(x)
+        # 计算分类损失
         ce_loss = self.loss(self.classifier(feats), y).mean()
 
-        # train generator/encoder to make discriminator classify feats as noise (label 1)
+        # 计算对抗损失，使判别器将特征分类为噪声（标签1）
         true_y = torch.tensor(feats.shape[0]*[1], device=feats.device, dtype=feats.dtype)
         g_logits = self.discriminator(feats)
-        g_loss = self.discriminator_loss(g_logits.squeeze(1), true_y) # apply BCEWithLogitsLoss to discriminator's logit output
+        g_loss = self.discriminator_loss(g_logits.squeeze(1), true_y)
         loss = ce_loss + self.hparams['urm_adv_lambda']*g_loss
 
         return loss, feats
 
     def update(self, minibatches, unlabeled=None):
+        """执行一步更新
+        
+        更新生成器和判别器参数。
+        
+        Args:
+            minibatches: (x, y)元组列表
+            unlabeled: 未使用
+            
+        Returns:
+            包含损失值的字典
+        """
+        # 合并所有环境的输入和标签
         all_x = torch.cat([x for x, y in minibatches])
         all_y = torch.cat([y for x, y in minibatches])
             
+        # 计算损失和特征
         loss, feats = self._compute_loss(all_x, all_y)
 
+        # 更新生成器
         self.optimizer.zero_grad()
-
         loss.backward()
         self.optimizer.step()
 
+        # 更新判别器
         self._update_discriminator(all_x, all_y, feats)
     
         return {'loss': loss.item()}
 
-
-
-
 class ARM(ERM):
-    """ Adaptive Risk Minimization (ARM) """
+    """自适应风险最小化算法"""
     def __init__(self, input_shape, num_classes, num_domains, hparams):
+        """初始化ARM算法
+        
+        Args:
+            input_shape: 输入数据的形状
+            num_classes: 类别数量
+            num_domains: 域数量
+            hparams: 超参数字典
+        """
+        # 修改输入形状以包含上下文信息
         original_input_shape = input_shape
         input_shape = (1 + original_input_shape[0],) + original_input_shape[1:]
-        super(ARM, self).__init__(input_shape, num_classes, num_domains,
-                                  hparams)
+        super(ARM, self).__init__(input_shape, num_classes, num_domains, hparams)
+        # 创建上下文网络
         self.context_net = networks.ContextNet(original_input_shape)
         self.support_size = hparams['batch_size']
 
     def predict(self, x):
+        """预测输入数据的标签
+        
+        使用上下文信息增强输入特征进行预测。
+        
+        Args:
+            x: 输入数据
+            
+        Returns:
+            预测的对数概率
+        """
         batch_size, c, h, w = x.shape
+        # 计算元批次大小和支持大小
         if batch_size % self.support_size == 0:
             meta_batch_size = batch_size // self.support_size
             support_size = self.support_size
         else:
             meta_batch_size, support_size = 1, batch_size
+        # 计算上下文信息
         context = self.context_net(x)
         context = context.reshape((meta_batch_size, support_size, 1, h, w))
         context = context.mean(dim=1)
         context = torch.repeat_interleave(context, repeats=support_size, dim=0)
+        # 将上下文信息与输入连接
         x = torch.cat([x, context], dim=1)
         return self.network(x)
 
-
 class AbstractDANN(Algorithm):
-    """Domain-Adversarial Neural Networks (abstract class)"""
-
+    """域对抗神经网络抽象基类"""
     def __init__(self, input_shape, num_classes, num_domains,
                  hparams, conditional, class_balance):
-
-        super(AbstractDANN, self).__init__(input_shape, num_classes, num_domains,
-                                  hparams)
+        """初始化DANN算法
+        
+        Args:
+            input_shape: 输入数据的形状
+            num_classes: 类别数量
+            num_domains: 域数量
+            hparams: 超参数字典
+            conditional: 是否使用条件对抗
+            class_balance: 是否使用类别平衡
+        """
+        super(AbstractDANN, self).__init__(input_shape, num_classes, num_domains, hparams)
 
         self.register_buffer('update_count', torch.tensor([0]))
         self.conditional = conditional
         self.class_balance = class_balance
 
-        # Algorithms - 使用CNNDA网络
-        self.featurizer = networks.Featurizer()
-        # 设置n_outputs属性，用于域判别器初始化
-        self.featurizer.n_outputs = self.featurizer.feature_dim
-        # 创建一个新的分类器接口，与原有架构兼容
-        self.classifier = lambda features: self.featurizer(features, return_features=False)
+        # 创建网络组件
         self.featurizer = networks.Featurizer(input_shape, self.hparams)
         self.classifier = networks.Classifier(
             self.featurizer.n_outputs,
@@ -533,7 +694,7 @@ class AbstractDANN(Algorithm):
         self.class_embeddings = nn.Embedding(num_classes,
             self.featurizer.n_outputs)
 
-        # Optimizers
+        # 创建优化器
         self.disc_opt = torch.optim.Adam(
             (list(self.discriminator.parameters()) +
                 list(self.class_embeddings.parameters())),
@@ -549,22 +710,36 @@ class AbstractDANN(Algorithm):
             betas=(self.hparams['beta1'], 0.9))
 
     def update(self, minibatches, unlabeled=None):
+        """执行一步更新
+        
+        交替更新判别器和生成器。
+        
+        Args:
+            minibatches: (x, y)元组列表
+            unlabeled: 未使用
+            
+        Returns:
+            包含损失值的字典
+        """
         device = "cuda" if minibatches[0][0].is_cuda else "cpu"
         self.update_count += 1
+        # 合并所有环境的输入和标签
         all_x = torch.cat([x for x, y in minibatches])
         all_y = torch.cat([y for x, y in minibatches])
-        # 使用CNNDA的return_features参数获取特征
-        _, all_z = self.featurizer(all_x, return_features=True)
+        all_z = self.featurizer(all_x)
+        # 根据是否条件对抗构造判别器输入
         if self.conditional:
             disc_input = all_z + self.class_embeddings(all_y)
         else:
             disc_input = all_z
+        # 计算判别器输出和损失
         disc_out = self.discriminator(disc_input)
         disc_labels = torch.cat([
             torch.full((x.shape[0], ), i, dtype=torch.int64, device=device)
             for i, (x, y) in enumerate(minibatches)
         ])
 
+        # 如果启用类别平衡，计算加权损失
         if self.class_balance:
             y_counts = F.one_hot(all_y).sum(dim=0)
             weights = 1. / (y_counts[all_y] * y_counts.shape[0]).float()
@@ -573,20 +748,23 @@ class AbstractDANN(Algorithm):
         else:
             disc_loss = F.cross_entropy(disc_out, disc_labels)
 
+        # 计算梯度惩罚
         input_grad = autograd.grad(
             F.cross_entropy(disc_out, disc_labels, reduction='sum'),
             [disc_input], create_graph=True)[0]
         grad_penalty = (input_grad**2).sum(dim=1).mean(dim=0)
         disc_loss += self.hparams['grad_penalty'] * grad_penalty
 
+        # 交替更新判别器和生成器
         d_steps_per_g = self.hparams['d_steps_per_g_step']
         if (self.update_count.item() % (1+d_steps_per_g) < d_steps_per_g):
-
+            # 更新判别器
             self.disc_opt.zero_grad()
             disc_loss.backward()
             self.disc_opt.step()
             return {'disc_loss': disc_loss.item()}
         else:
+            # 更新生成器
             all_preds = self.classifier(all_z)
             classifier_loss = F.cross_entropy(all_preds, all_y)
             gen_loss = (classifier_loss +
@@ -598,135 +776,69 @@ class AbstractDANN(Algorithm):
             return {'gen_loss': gen_loss.item()}
 
     def predict(self, x):
+        """预测输入数据的标签
+        
+        Args:
+            x: 输入数据
+            
+        Returns:
+            预测的对数概率
+        """
         return self.classifier(self.featurizer(x))
 
 class DANN(AbstractDANN):
-    """Unconditional DANN"""
+    """无条件域对抗神经网络"""
     def __init__(self, input_shape, num_classes, num_domains, hparams):
+        """初始化DANN算法
+        
+        Args:
+            input_shape: 输入数据的形状
+            num_classes: 类别数量
+            num_domains: 域数量
+            hparams: 超参数字典
+        """
         super(DANN, self).__init__(input_shape, num_classes, num_domains,
             hparams, conditional=False, class_balance=False)
 
-
 class CDANN(AbstractDANN):
-    """Conditional DANN"""
+    """条件域对抗神经网络"""
     def __init__(self, input_shape, num_classes, num_domains, hparams):
+        """初始化CDANN算法
+        
+        Args:
+            input_shape: 输入数据的形状
+            num_classes: 类别数量
+            num_domains: 域数量
+            hparams: 超参数字典
+        """
         super(CDANN, self).__init__(input_shape, num_classes, num_domains,
             hparams, conditional=True, class_balance=True)
 
-
-
-
-
-
-        all_x = torch.cat([x for x, y in minibatches])
-        all_logits = self.predict(all_x)
-        losses = torch.zeros(len(minibatches)).cuda()
-        all_logits_idx = 0
-        all_confs_envs = None
-
-        for i, (x, y) in enumerate(minibatches):
-            logits = all_logits[all_logits_idx:all_logits_idx + x.shape[0]]
-            all_logits_idx += x.shape[0]
-            losses[i] = F.cross_entropy(logits, y)
-            
-            nll = F.cross_entropy(logits, y, reduction = "none").unsqueeze(0)
-        
-            if all_confs_envs is None:
-                all_confs_envs = nll
-            else:
-                all_confs_envs = torch.cat([all_confs_envs, nll], dim = 0)
-                
-        erm_loss = losses.mean()
-        
-        ## squeeze the risks
-        all_confs_envs = torch.squeeze(all_confs_envs)
-        
-        ## find the worst domain
-        worst_env_idx = torch.argmax(torch.clone(losses))
-        all_confs_worst_env = all_confs_envs[worst_env_idx]
-
-        ## flatten the risk
-        all_confs_worst_env_flat = torch.flatten(all_confs_worst_env)
-        all_confs_all_envs_flat = torch.flatten(all_confs_envs)
-    
-        matching_penalty = self.mmd(all_confs_worst_env_flat.unsqueeze(1), all_confs_all_envs_flat.unsqueeze(1)) 
-        
-        ## variance penalty
-        variance_penalty = torch.var(all_confs_all_envs_flat)
-        variance_penalty += torch.var(all_confs_worst_env_flat)
-        
-        total_loss = erm_loss + matching_penalty_weight * matching_penalty + variance_penalty_weight * variance_penalty
-            
-        if self.update_count == self.hparams['rdm_penalty_anneal_iters']:
-            # Reset Adam, because it doesn't like the sharp jump in gradient
-            # magnitudes that happens at this step.
-            self.optimizer = torch.optim.Adam(
-                self.network.parameters(),
-                lr=self.hparams["rdm_lr"],
-                weight_decay=self.hparams['weight_decay'])
-
-        self.optimizer.zero_grad()
-        total_loss.backward()
-        self.optimizer.step()
-        
-        self.update_count += 1
-
-        return {'update_count': self.update_count.item(), 'total_loss': total_loss.item(), 'erm_loss': erm_loss.item(), 'matching_penalty': matching_penalty.item(), 'variance_penalty': variance_penalty.item(), 'rdm_lambda' : self.hparams['rdm_lambda']}
-
-
-
-        objective /= len(minibatches)
-
-        self.optimizer.step()
-
-        return {'loss': objective}
-
-    # This commented "update" method back-propagates through the gradients of
-    # the inner update, as suggested in the original MAML paper.  However, this
-    # is twice as expensive as the uncommented "update" method, which does not
-    # compute second-order derivatives, implementing the First-Order MAML
-    # method (FOMAML) described in the original MAML paper.
-
-    # def update(self, minibatches, unlabeled=None):
-    #     objective = 0
-    #     beta = self.hparams["beta"]
-    #     inner_iterations = self.hparams["inner_iterations"]
-
-    #     self.optimizer.zero_grad()
-
-    #     with higher.innerloop_ctx(self.network, self.optimizer,
-    #         copy_initial_weights=False) as (inner_network, inner_optimizer):
-
-    #         for (xi, yi), (xj, yj) in random_pairs_of_minibatches(minibatches):
-    #             for inner_iteration in range(inner_iterations):
-    #                 li = F.cross_entropy(inner_network(xi), yi)
-    #                 inner_optimizer.step(li)
-    #
-    #             objective += F.cross_entropy(self.network(xi), yi)
-    #             objective += beta * F.cross_entropy(inner_network(xj), yj)
-
-    #         objective /= len(minibatches)
-    #         objective.backward()
-    #
-    #     self.optimizer.step()
-    #
-    #     return objective
-
-
 class AbstractMMD(ERM):
-    """
-    Perform ERM while matching the pair-wise domain feature distributions
-    using MMD (abstract class)
-    """
+    """基于MMD的域适应算法抽象基类"""
     def __init__(self, input_shape, num_classes, num_domains, hparams, gaussian):
-        super(AbstractMMD, self).__init__(input_shape, num_classes, num_domains,
-                                  hparams)
-        if gaussian:
-            self.kernel_type = "gaussian"
-        else:
-            self.kernel_type = "mean_cov"
+        """初始化MMD算法
+        
+        Args:
+            input_shape: 输入数据的形状
+            num_classes: 类别数量
+            num_domains: 域数量
+            hparams: 超参数字典
+            gaussian: 是否使用高斯核
+        """
+        super(AbstractMMD, self).__init__(input_shape, num_classes, num_domains, hparams)
+        self.kernel_type = "gaussian" if gaussian else "mean_cov"
 
     def my_cdist(self, x1, x2):
+        """计算成对距离矩阵
+        
+        Args:
+            x1: 第一个输入
+            x2: 第二个输入
+            
+        Returns:
+            距离矩阵
+        """
         x1_norm = x1.pow(2).sum(dim=-1, keepdim=True)
         x2_norm = x2.pow(2).sum(dim=-1, keepdim=True)
         res = torch.addmm(x2_norm.transpose(-2, -1),
@@ -734,23 +846,40 @@ class AbstractMMD(ERM):
                           x2.transpose(-2, -1), alpha=-2).add_(x1_norm)
         return res.clamp_min_(1e-30)
 
-    def gaussian_kernel(self, x, y, gamma=[0.001, 0.01, 0.1, 1, 10, 100,
-                                           1000]):
+    def gaussian_kernel(self, x, y, gamma=[0.001, 0.01, 0.1, 1, 10, 100, 1000]):
+        """计算高斯核矩阵
+        
+        Args:
+            x: 第一个输入
+            y: 第二个输入
+            gamma: 带宽参数列表
+            
+        Returns:
+            核矩阵
+        """
         D = self.my_cdist(x, y)
         K = torch.zeros_like(D)
-
         for g in gamma:
             K.add_(torch.exp(D.mul(-g)))
-
         return K
 
     def mmd(self, x, y):
+        """计算MMD距离
+        
+        Args:
+            x: 第一个分布的样本
+            y: 第二个分布的样本
+            
+        Returns:
+            MMD距离
+        """
         if self.kernel_type == "gaussian":
             Kxx = self.gaussian_kernel(x, x).mean()
             Kyy = self.gaussian_kernel(y, y).mean()
             Kxy = self.gaussian_kernel(x, y).mean()
             return Kxx + Kyy - 2 * Kxy
         else:
+            # 使用均值和协方差差异
             mean_x = x.mean(0, keepdim=True)
             mean_y = y.mean(0, keepdim=True)
             cent_x = x - mean_x
@@ -764,23 +893,39 @@ class AbstractMMD(ERM):
             return mean_diff + cova_diff
 
     def update(self, minibatches, unlabeled=None):
+        """执行一步更新
+        
+        计算分类损失和MMD损失，更新参数。
+        
+        Args:
+            minibatches: (x, y)元组列表
+            unlabeled: 未使用
+            
+        Returns:
+            包含损失值的字典
+        """
         objective = 0
         penalty = 0
         nmb = len(minibatches)
 
+        # 提取特征和预测
         features = [self.featurizer(xi) for xi, _ in minibatches]
         classifs = [self.classifier(fi) for fi in features]
         targets = [yi for _, yi in minibatches]
 
+        # 计算分类损失
         for i in range(nmb):
             objective += F.cross_entropy(classifs[i], targets[i])
+            # 计算域间MMD损失
             for j in range(i + 1, nmb):
                 penalty += self.mmd(features[i], features[j])
 
+        # 平均化损失
         objective /= nmb
         if nmb > 1:
             penalty /= (nmb * (nmb - 1) / 2)
 
+        # 更新参数
         self.optimizer.zero_grad()
         (objective + (self.hparams['mmd_gamma']*penalty)).backward()
         self.optimizer.step()
@@ -790,42 +935,56 @@ class AbstractMMD(ERM):
 
         return {'loss': objective.item(), 'penalty': penalty}
 
-
 class MMD(AbstractMMD):
-    """
-    MMD using Gaussian kernel
-    """
-
+    """使用高斯核的MMD算法"""
     def __init__(self, input_shape, num_classes, num_domains, hparams):
+        """初始化MMD算法
+        
+        Args:
+            input_shape: 输入数据的形状
+            num_classes: 类别数量
+            num_domains: 域数量
+            hparams: 超参数字典
+        """
         super(MMD, self).__init__(input_shape, num_classes,
                                           num_domains, hparams, gaussian=True)
 
-
 class CORAL(AbstractMMD):
-    """
-    MMD using mean and covariance difference
-    """
-
+    """使用均值和协方差差异的MMD算法"""
     def __init__(self, input_shape, num_classes, num_domains, hparams):
+        """初始化CORAL算法
+        
+        Args:
+            input_shape: 输入数据的形状
+            num_classes: 类别数量
+            num_domains: 域数量
+            hparams: 超参数字典
+        """
         super(CORAL, self).__init__(input_shape, num_classes,
                                          num_domains, hparams, gaussian=False)
 
-
 class MTL(Algorithm):
+    """多任务学习算法
+    
+    实现论文: Domain Generalization by Marginal Transfer Learning
     """
-    A neural network version of
-    Domain Generalization by Marginal Transfer Learning
-    (https://arxiv.org/abs/1711.07910)
-    """
-
     def __init__(self, input_shape, num_classes, num_domains, hparams):
-        super(MTL, self).__init__(input_shape, num_classes, num_domains,
-                                  hparams)
+        """初始化MTL算法
+        
+        Args:
+            input_shape: 输入数据的形状
+            num_classes: 类别数量
+            num_domains: 域数量
+            hparams: 超参数字典
+        """
+        super(MTL, self).__init__(input_shape, num_classes, num_domains, hparams)
+        # 创建特征提取器和分类器
         self.featurizer = networks.Featurizer(input_shape, self.hparams)
         self.classifier = networks.Classifier(
             self.featurizer.n_outputs * 2,
             num_classes,
             self.hparams['nonlinear_classifier'])
+        # 创建优化器
         self.optimizer = torch.optim.Adam(
             list(self.featurizer.parameters()) +\
             list(self.classifier.parameters()),
@@ -833,6 +992,7 @@ class MTL(Algorithm):
             weight_decay=self.hparams['weight_decay']
         )
 
+        # 注册域嵌入
         self.register_buffer('embeddings',
                              torch.zeros(num_domains,
                                          self.featurizer.n_outputs))
@@ -840,6 +1000,17 @@ class MTL(Algorithm):
         self.ema = self.hparams['mtl_ema']
 
     def update(self, minibatches, unlabeled=None):
+        """执行一步更新
+        
+        对每个域计算损失并更新参数。
+        
+        Args:
+            minibatches: (x, y)元组列表
+            unlabeled: 未使用
+            
+        Returns:
+            包含损失值的字典
+        """
         loss = 0
         for env, (x, y) in enumerate(minibatches):
             loss += F.cross_entropy(self.predict(x, env), y)
@@ -851,45 +1022,72 @@ class MTL(Algorithm):
         return {'loss': loss.item()}
 
     def update_embeddings_(self, features, env=None):
+        """更新域嵌入
+        
+        使用指数移动平均更新域嵌入。
+        
+        Args:
+            features: 输入特征
+            env: 域索引
+            
+        Returns:
+            更新后的嵌入
+        """
         return_embedding = features.mean(0)
 
         if env is not None:
+            # 使用指数移动平均
             return_embedding = self.ema * return_embedding +\
                                (1 - self.ema) * self.embeddings[env]
-
             self.embeddings[env] = return_embedding.clone().detach()
 
         return return_embedding.view(1, -1).repeat(len(features), 1)
 
     def predict(self, x, env=None):
+        """预测输入数据的标签
+        
+        使用域嵌入增强特征进行预测。
+        
+        Args:
+            x: 输入数据
+            env: 域索引
+            
+        Returns:
+            预测的对数概率
+        """
         features = self.featurizer(x)
         embedding = self.update_embeddings_(features, env).normal_()
         return self.classifier(torch.cat((features, embedding), 1))
 
 class SagNet(Algorithm):
+    """风格无关网络
+    
+    实现论文: https://arxiv.org/abs/1910.11645
     """
-    Style Agnostic Network
-    Algorithm 1 from: https://arxiv.org/abs/1910.11645
-    """
-
     def __init__(self, input_shape, num_classes, num_domains, hparams):
-        super(SagNet, self).__init__(input_shape, num_classes, num_domains,
-                                  hparams)
-        # featurizer network
+        """初始化SagNet算法
+        
+        Args:
+            input_shape: 输入数据的形状
+            num_classes: 类别数量
+            num_domains: 域数量
+            hparams: 超参数字典
+        """
+        super(SagNet, self).__init__(input_shape, num_classes, num_domains, hparams)
+        # 创建特征提取器
         self.network_f = networks.Featurizer(input_shape, self.hparams)
-        # content network
+        # 创建内容网络
         self.network_c = networks.Classifier(
             self.network_f.n_outputs,
             num_classes,
             self.hparams['nonlinear_classifier'])
-        # style network
+        # 创建风格网络
         self.network_s = networks.Classifier(
             self.network_f.n_outputs,
             num_classes,
             self.hparams['nonlinear_classifier'])
 
-
-
+        # 创建优化器
         def opt(p):
             return torch.optim.Adam(p, lr=hparams["lr"],
                     weight_decay=hparams["weight_decay"])
@@ -900,14 +1098,44 @@ class SagNet(Algorithm):
         self.weight_adv = hparams["sag_w_adv"]
 
     def forward_c(self, x):
-        # learning content network on randomized style
+        """前向传播内容网络
+        
+        使用随机化的风格特征。
+        
+        Args:
+            x: 输入数据
+            
+        Returns:
+            内容网络的输出
+        """
         return self.network_c(self.randomize(self.network_f(x), "style"))
 
     def forward_s(self, x):
-        # learning style network on randomized content
+        """前向传播风格网络
+        
+        使用随机化的内容特征。
+        
+        Args:
+            x: 输入数据
+            
+        Returns:
+            风格网络的输出
+        """
         return self.network_s(self.randomize(self.network_f(x), "content"))
 
     def randomize(self, x, what="style", eps=1e-5):
+        """随机化特征
+        
+        对特征的风格或内容进行随机化。
+        
+        Args:
+            x: 输入特征
+            what: 随机化类型（"style"或"content"）
+            eps: 数值稳定性参数
+            
+        Returns:
+            随机化后的特征
+        """
         device = "cuda" if x.is_cuda else "cpu"
         sizes = x.size()
         alpha = torch.rand(sizes[0], 1).to(device)
@@ -923,19 +1151,32 @@ class SagNet(Algorithm):
 
         idx_swap = torch.randperm(sizes[0])
         if what == "style":
+            # 随机化风格
             mean = alpha * mean + (1 - alpha) * mean[idx_swap]
             var = alpha * var + (1 - alpha) * var[idx_swap]
         else:
+            # 随机化内容
             x = x[idx_swap].detach()
 
         x = x * (var + eps).sqrt() + mean
         return x.view(*sizes)
 
     def update(self, minibatches, unlabeled=None):
+        """执行一步更新
+        
+        交替更新内容网络、风格网络和对抗网络。
+        
+        Args:
+            minibatches: (x, y)元组列表
+            unlabeled: 未使用
+            
+        Returns:
+            包含损失值的字典
+        """
         all_x = torch.cat([x for x, y in minibatches])
         all_y = torch.cat([y for x, y in minibatches])
 
-        # learn content
+        # 更新内容网络
         self.optimizer_f.zero_grad()
         self.optimizer_c.zero_grad()
         loss_c = F.cross_entropy(self.forward_c(all_x), all_y)
@@ -943,13 +1184,13 @@ class SagNet(Algorithm):
         self.optimizer_f.step()
         self.optimizer_c.step()
 
-        # learn style
+        # 更新风格网络
         self.optimizer_s.zero_grad()
         loss_s = F.cross_entropy(self.forward_s(all_x), all_y)
         loss_s.backward()
         self.optimizer_s.step()
 
-        # learn adversary
+        # 更新对抗网络
         self.optimizer_f.zero_grad()
         loss_adv = -F.log_softmax(self.forward_s(all_x), dim=1).mean(1).mean()
         loss_adv = loss_adv * self.weight_adv
@@ -960,98 +1201,37 @@ class SagNet(Algorithm):
                 'loss_adv': loss_adv.item()}
 
     def predict(self, x):
+        """预测输入数据的标签
+        
+        使用内容网络进行预测。
+        
+        Args:
+            x: 输入数据
+            
+        Returns:
+            预测的对数概率
+        """
         return self.network_c(self.network_f(x))
 
-
-
-
-
-
-
-    def mask_grads(self, tau, gradients, params):
-
-        for param, grads in zip(params, gradients):
-            grads = torch.stack(grads, dim=0)
-            grad_signs = torch.sign(grads)
-            mask = torch.mean(grad_signs, dim=0).abs() >= self.tau
-            mask = mask.to(torch.float32)
-            avg_grad = torch.mean(grads, dim=0)
-
-            mask_t = (mask.sum() / mask.numel())
-            param.grad = mask * avg_grad
-            param.grad *= (1. / (1e-10 + mask_t))
-
-        return 0
-
-
-
-
-
-
-
-
-
-
-
-
-
-    def _get_grads_var_per_domain(self, dict_grads, len_minibatches):
-        # grads var per domain
-        grads_var_per_domain = [{} for _ in range(self.num_domains)]
-        for name, _grads in dict_grads.items():
-            all_idx = 0
-            for domain_id, bsize in enumerate(len_minibatches):
-                env_grads = _grads[all_idx:all_idx + bsize]
-                all_idx += bsize
-                env_mean = env_grads.mean(dim=0, keepdim=True)
-                env_grads_centered = env_grads - env_mean
-                grads_var_per_domain[domain_id][name] = (env_grads_centered).pow(2).mean(dim=0)
-
-        # moving average
-        for domain_id in range(self.num_domains):
-            grads_var_per_domain[domain_id] = self.ema_per_domain[domain_id].update(
-                grads_var_per_domain[domain_id]
-            )
-
-        return grads_var_per_domain
-
-    def _compute_distance_grads_var(self, grads_var_per_domain):
-
-        # compute gradient variances averaged across domains
-        grads_var = OrderedDict(
-            [
-                (
-                    name,
-                    torch.stack(
-                        [
-                            grads_var_per_domain[domain_id][name]
-                            for domain_id in range(self.num_domains)
-                        ],
-                        dim=0
-                    ).mean(dim=0)
-                )
-                for name in grads_var_per_domain[0].keys()
-            ]
-        )
-
-        penalty = 0
-        for domain_id in range(self.num_domains):
-            penalty += l2_between_dicts(grads_var_per_domain[domain_id], grads_var)
-        return penalty / self.num_domains
-
-    def predict(self, x):
-        return self.network(x)
-
-
 class AbstractCAD(Algorithm):
-    """Contrastive adversarial domain bottleneck (abstract class)
-    from Optimal Representations for Covariate Shift <https://arxiv.org/abs/2201.00057>
+    """对比对抗域瓶颈抽象基类
+    
+    实现论文: Optimal Representations for Covariate Shift
     """
-
     def __init__(self, input_shape, num_classes, num_domains,
                  hparams, is_conditional):
+        """初始化CAD算法
+        
+        Args:
+            input_shape: 输入数据的形状
+            num_classes: 类别数量
+            num_domains: 域数量
+            hparams: 超参数字典
+            is_conditional: 是否使用条件瓶颈
+        """
         super(AbstractCAD, self).__init__(input_shape, num_classes, num_domains, hparams)
 
+        # 创建网络组件
         self.featurizer = networks.Featurizer(input_shape, self.hparams)
         self.classifier = networks.Classifier(
             self.featurizer.n_outputs,
@@ -1059,17 +1239,15 @@ class AbstractCAD(Algorithm):
             self.hparams['nonlinear_classifier'])
         params = list(self.featurizer.parameters()) + list(self.classifier.parameters())
 
-        # parameters for domain bottleneck loss
-        self.is_conditional = is_conditional  # whether to use bottleneck conditioned on the label
+        # 初始化瓶颈损失参数
+        self.is_conditional = is_conditional
         self.base_temperature = 0.07
         self.temperature = hparams['temperature']
-        self.is_project = hparams['is_project']  # whether apply projection head
-        self.is_normalized = hparams['is_normalized'] # whether apply normalization to representation when computing loss
-
-        # whether flip maximize log(p) (False) to minimize -log(1-p) (True) for the bottleneck loss
-        # the two versions have the same optima, but we find the latter is more stable
+        self.is_project = hparams['is_project']
+        self.is_normalized = hparams['is_normalized']
         self.is_flipped = hparams["is_flipped"]
 
+        # 如果需要，添加投影头
         if self.is_project:
             self.project = nn.Sequential(
                 nn.Linear(self.featurizer.n_outputs, self.featurizer.n_outputs),
@@ -1078,7 +1256,7 @@ class AbstractCAD(Algorithm):
             )
             params += list(self.project.parameters())
 
-        # Optimizers
+        # 创建优化器
         self.optimizer = torch.optim.Adam(
             params,
             lr=self.hparams["lr"],
@@ -1086,25 +1264,33 @@ class AbstractCAD(Algorithm):
         )
 
     def bn_loss(self, z, y, dom_labels):
-        """Contrastive based domain bottleneck loss
-         The implementation is based on the supervised contrastive loss (SupCon) introduced by
-         P. Khosla, et al., in “Supervised Contrastive Learning“.
-        Modified from  https://github.com/HobbitLong/SupContrast/blob/8d0963a7dbb1cd28accb067f5144d61f18a77588/losses.py#L11
+        """计算对比域瓶颈损失
+        
+        基于监督对比损失(SupCon)实现。
+        
+        Args:
+            z: 特征表示
+            y: 类别标签
+            dom_labels: 域标签
+            
+        Returns:
+            瓶颈损失
         """
         device = z.device
         batch_size = z.shape[0]
 
+        # 创建掩码
         y = y.contiguous().view(-1, 1)
         dom_labels = dom_labels.contiguous().view(-1, 1)
         mask_y = torch.eq(y, y.T).to(device)
         mask_d = (torch.eq(dom_labels, dom_labels.T)).to(device)
-        mask_drop = ~torch.eye(batch_size).bool().to(device)  # drop the "current"/"self" example
+        mask_drop = ~torch.eye(batch_size).bool().to(device)
         mask_y &= mask_drop
-        mask_y_n_d = mask_y & (~mask_d)  # contain the same label but from different domains
-        mask_y_d = mask_y & mask_d  # contain the same label and the same domain
+        mask_y_n_d = mask_y & (~mask_d)  # 相同类别不同域
+        mask_y_d = mask_y & mask_d  # 相同类别相同域
         mask_y, mask_drop, mask_y_n_d, mask_y_d = mask_y.float(), mask_drop.float(), mask_y_n_d.float(), mask_y_d.float()
 
-        # compute logits
+        # 计算logits
         if self.is_project:
             z = self.project(z)
         if self.is_normalized:
@@ -1112,12 +1298,12 @@ class AbstractCAD(Algorithm):
         outer = z @ z.T
         logits = outer / self.temperature
         logits = logits * mask_drop
-        # for numerical stability
+        # 数值稳定性
         logits_max, _ = torch.max(logits, dim=1, keepdim=True)
         logits = logits - logits_max.detach()
 
         if not self.is_conditional:
-            # unconditional CAD loss
+            # 无条件CAD损失
             denominator = torch.logsumexp(logits + mask_drop.log(), dim=1, keepdim=True)
             log_prob = logits - denominator
 
@@ -1125,14 +1311,16 @@ class AbstractCAD(Algorithm):
             log_prob = log_prob[mask_valid]
             mask_d = mask_d[mask_valid]
 
-            if self.is_flipped:  # maximize log prob of samples from different domains
+            if self.is_flipped:
+                # 最大化不同域样本的对数概率
                 bn_loss = - (self.temperature / self.base_temperature) * torch.logsumexp(
                     log_prob + (~mask_d).float().log(), dim=1)
-            else:  # minimize log prob of samples from same domain
+            else:
+                # 最小化相同域样本的对数概率
                 bn_loss = (self.temperature / self.base_temperature) * torch.logsumexp(
                     log_prob + (mask_d).float().log(), dim=1)
         else:
-            # conditional CAD loss
+            # 条件CAD损失
             if self.is_flipped:
                 mask_valid = (mask_y_n_d.sum(1) > 0)
             else:
@@ -1143,19 +1331,21 @@ class AbstractCAD(Algorithm):
             mask_y_n_d = mask_y_n_d[mask_valid]
             logits = logits[mask_valid]
 
-            # compute log_prob_y with the same label
+            # 计算相同标签的对数概率
             denominator = torch.logsumexp(logits + mask_y.log(), dim=1, keepdim=True)
             log_prob_y = logits - denominator
 
-            if self.is_flipped:  # maximize log prob of samples from different domains and with same label
+            if self.is_flipped:
+                # 最大化不同域相同标签样本的对数概率
                 bn_loss = - (self.temperature / self.base_temperature) * torch.logsumexp(
                     log_prob_y + mask_y_n_d.log(), dim=1)
-            else:  # minimize log prob of samples from same domains and with same label
+            else:
+                # 最小化相同域相同标签样本的对数概率
                 bn_loss = (self.temperature / self.base_temperature) * torch.logsumexp(
                     log_prob_y + mask_y_d.log(), dim=1)
 
         def finite_mean(x):
-            # only 1D for now
+            """计算有限值的均值"""
             num_finite = (torch.isfinite(x).float()).sum()
             mean = torch.where(torch.isfinite(x), x, torch.tensor(0.0).to(x)).sum()
             if num_finite != 0:
@@ -1167,7 +1357,19 @@ class AbstractCAD(Algorithm):
         return finite_mean(bn_loss)
 
     def update(self, minibatches, unlabeled=None):
+        """执行一步更新
+        
+        计算分类损失和瓶颈损失，更新参数。
+        
+        Args:
+            minibatches: (x, y)元组列表
+            unlabeled: 未使用
+            
+        Returns:
+            包含损失值的字典
+        """
         device = "cuda" if minibatches[0][0].is_cuda else "cpu"
+        # 合并所有环境的输入和标签
         all_x = torch.cat([x for x, y in minibatches])
         all_y = torch.cat([y for x, y in minibatches])
         all_z = self.featurizer(all_x)
@@ -1176,11 +1378,13 @@ class AbstractCAD(Algorithm):
             for i, (x, y) in enumerate(minibatches)
         ])
 
+        # 计算瓶颈损失和分类损失
         bn_loss = self.bn_loss(all_z, all_y, all_d)
         clf_out = self.classifier(all_z)
         clf_loss = F.cross_entropy(clf_out, all_y)
         total_loss = clf_loss + self.hparams['lmbda'] * bn_loss
 
+        # 更新参数
         self.optimizer.zero_grad()
         total_loss.backward()
         self.optimizer.step()
@@ -1188,41 +1392,71 @@ class AbstractCAD(Algorithm):
         return {"clf_loss": clf_loss.item(), "bn_loss": bn_loss.item(), "total_loss": total_loss.item()}
 
     def predict(self, x):
+        """预测输入数据的标签
+        
+        Args:
+            x: 输入数据
+            
+        Returns:
+            预测的对数概率
+        """
         return self.classifier(self.featurizer(x))
 
-
 class CAD(AbstractCAD):
-    """Contrastive Adversarial Domain (CAD) bottleneck
-
-       Properties:
-       - Minimize I(D;Z)
-       - Require access to domain labels but not task labels
-       """
-
-    def __init__(self, input_shape, num_classes, num_domains, hparams):
-        super(CAD, self).__init__(input_shape, num_classes, num_domains, hparams, is_conditional=False)
-
-
-class CondCAD(AbstractCAD):
-    """Conditional Contrastive Adversarial Domain (CAD) bottleneck
-
-    Properties:
-    - Minimize I(D;Z|Y)
-    - Require access to both domain labels and task labels
+    """对比对抗域瓶颈
+    
+    属性:
+    - 最小化I(D;Z)
+    - 需要域标签但不需要任务标签
     """
     def __init__(self, input_shape, num_classes, num_domains, hparams):
+        """初始化CAD算法
+        
+        Args:
+            input_shape: 输入数据的形状
+            num_classes: 类别数量
+            num_domains: 域数量
+            hparams: 超参数字典
+        """
+        super(CAD, self).__init__(input_shape, num_classes, num_domains, hparams, is_conditional=False)
+
+class CondCAD(AbstractCAD):
+    """条件对比对抗域瓶颈
+    
+    属性:
+    - 最小化I(D;Z|Y)
+    - 需要域标签和任务标签
+    """
+    def __init__(self, input_shape, num_classes, num_domains, hparams):
+        """初始化CondCAD算法
+        
+        Args:
+            input_shape: 输入数据的形状
+            num_classes: 类别数量
+            num_domains: 域数量
+            hparams: 超参数字典
+        """
         super(CondCAD, self).__init__(input_shape, num_classes, num_domains, hparams, is_conditional=True)
 
-
 class Transfer(Algorithm):
-    '''Algorithm 1 in Quantifying and Improving Transferability in Domain Generalization (https://arxiv.org/abs/2106.03632)'''
-    ''' tries to ensure transferability among source domains, and thus transferabiilty between source and target'''
+    """迁移学习算法
+    
+    实现论文: Quantifying and Improving Transferability in Domain Generalization
+    """
     def __init__(self, input_shape, num_classes, num_domains, hparams):
+        """初始化Transfer算法
+        
+        Args:
+            input_shape: 输入数据的形状
+            num_classes: 类别数量
+            num_domains: 域数量
+            hparams: 超参数字典
+        """
         super(Transfer, self).__init__(input_shape, num_classes, num_domains, hparams)
         self.register_buffer('update_count', torch.tensor([0]))
         self.d_steps_per_g = hparams['d_steps_per_g']
 
-        # Architecture
+        # 创建网络组件
         self.featurizer = networks.Featurizer(input_shape, self.hparams)
         self.classifier = networks.Classifier(
             self.featurizer.n_outputs,
@@ -1234,7 +1468,7 @@ class Transfer(Algorithm):
             self.hparams['nonlinear_classifier'])
         self.adv_classifier.load_state_dict(self.classifier.state_dict())
 
-        # Optimizers
+        # 创建优化器
         if self.hparams['gda']:
             self.optimizer = torch.optim.SGD(self.adv_classifier.parameters(), lr=self.hparams['lr'])
         else:
@@ -1246,8 +1480,16 @@ class Transfer(Algorithm):
         self.adv_opt = torch.optim.SGD(self.adv_classifier.parameters(), lr=self.hparams['lr_d'])
 
     def loss_gap(self, minibatches, device):
-        ''' compute gap = max_i loss_i(h) - min_j loss_j(h), return i, j, and the gap for a single batch'''
-        max_env_loss, min_env_loss =  torch.tensor([-float('inf')], device=device), torch.tensor([float('inf')], device=device)
+        """计算域间损失差距
+        
+        Args:
+            minibatches: (x, y)元组列表
+            device: 计算设备
+            
+        Returns:
+            最大域损失与最小域损失的差值
+        """
+        max_env_loss, min_env_loss = torch.tensor([-float('inf')], device=device), torch.tensor([float('inf')], device=device)
         for x, y in minibatches:
             p = self.adv_classifier(self.featurizer(x))
             loss = F.cross_entropy(p, y)
@@ -1258,8 +1500,19 @@ class Transfer(Algorithm):
         return max_env_loss - min_env_loss
 
     def update(self, minibatches, unlabeled=None):
+        """执行一步更新
+        
+        交替更新主分类器和对抗分类器。
+        
+        Args:
+            minibatches: (x, y)元组列表
+            unlabeled: 未使用
+            
+        Returns:
+            包含损失值的字典
+        """
         device = "cuda" if minibatches[0][0].is_cuda else "cpu"
-        # outer loop
+        # 更新主分类器
         all_x = torch.cat([x for x, y in minibatches])
         all_y = torch.cat([y for x, y in minibatches])
         loss = F.cross_entropy(self.predict(all_x), all_y)
@@ -1268,11 +1521,13 @@ class Transfer(Algorithm):
         self.optimizer.step()
 
         del all_x, all_y
+        # 计算并更新损失差距
         gap = self.hparams['t_lambda'] * self.loss_gap(minibatches, device)
         self.optimizer.zero_grad()
         gap.backward()
         self.optimizer.step()
         self.adv_classifier.load_state_dict(self.classifier.state_dict())
+        # 更新对抗分类器
         for _ in range(self.d_steps_per_g):
             self.adv_opt.zero_grad()
             gap = -self.hparams['t_lambda'] * self.loss_gap(minibatches, device)
@@ -1282,9 +1537,21 @@ class Transfer(Algorithm):
         return {'loss': loss.item(), 'gap': -gap.item()}
 
     def update_second(self, minibatches, unlabeled=None):
+        """执行一步更新（备用实现）
+        
+        使用不同的更新策略。
+        
+        Args:
+            minibatches: (x, y)元组列表
+            unlabeled: 未使用
+            
+        Returns:
+            包含损失值的字典
+        """
         device = "cuda" if minibatches[0][0].is_cuda else "cpu"
         self.update_count = (self.update_count + 1) % (1 + self.d_steps_per_g)
         if self.update_count.item() == 1:
+            # 更新主分类器
             all_x = torch.cat([x for x, y in minibatches])
             all_y = torch.cat([y for x, y in minibatches])
             loss = F.cross_entropy(self.predict(all_x), all_y)
@@ -1293,6 +1560,7 @@ class Transfer(Algorithm):
             self.optimizer.step()
 
             del all_x, all_y
+            # 计算并更新损失差距
             gap = self.hparams['t_lambda'] * self.loss_gap(minibatches, device)
             self.optimizer.zero_grad()
             gap.backward()
@@ -1300,6 +1568,7 @@ class Transfer(Algorithm):
             self.adv_classifier.load_state_dict(self.classifier.state_dict())
             return {'loss': loss.item(), 'gap': gap.item()}
         else:
+            # 更新对抗分类器
             self.adv_opt.zero_grad()
             gap = -self.hparams['t_lambda'] * self.loss_gap(minibatches, device)
             gap.backward()
@@ -1307,33 +1576,42 @@ class Transfer(Algorithm):
             self.adv_classifier = proj(self.hparams['delta'], self.adv_classifier, self.classifier)
             return {'gap': -gap.item()}
 
-
     def predict(self, x):
+        """预测输入数据的标签
+        
+        Args:
+            x: 输入数据
+            
+        Returns:
+            预测的对数概率
+        """
         return self.classifier(self.featurizer(x))
 
-
-
-
-
-
-
-
-
-
-
 class ADRMX(Algorithm):
-    '''ADRMX: Additive Disentanglement of Domain Features with Remix Loss from (https://arxiv.org/abs/2308.06624)'''
+    """自适应域正则化混合算法
+    
+    实现论文: Additive Disentanglement of Domain Features with Remix Loss
+    """
     def __init__(self, input_shape, num_classes, num_domains, hparams):
-        super(ADRMX, self).__init__(input_shape, num_classes, num_domains,
-                                   hparams)
+        """初始化ADRMX算法
+        
+        Args:
+            input_shape: 输入数据的形状
+            num_classes: 类别数量
+            num_domains: 域数量
+            hparams: 超参数字典
+        """
+        super(ADRMX, self).__init__(input_shape, num_classes, num_domains, hparams)
         self.register_buffer('update_count', torch.tensor([0]))
 
+        # 初始化参数
         self.num_classes = num_classes
         self.num_domains = num_domains
         self.mix_num = 1
         self.scl_int = SupConLossLambda(lamda=0.5)
         self.scl_final = SupConLossLambda(lamda=0.5)
 
+        # 创建网络组件
         self.featurizer_label = networks.Featurizer(input_shape, self.hparams)
         self.featurizer_domain = networks.Featurizer(input_shape, self.hparams)
 
@@ -1355,9 +1633,10 @@ class ADRMX(Algorithm):
             num_domains,
             is_nonlinear=True)
 
-
+        # 构建完整网络
         self.network = nn.Sequential(self.featurizer_label, self.classifier_label_1)
 
+        # 创建优化器
         self.disc_opt = torch.optim.Adam(
             (list(self.discriminator.parameters())),
             lr=self.hparams["lr"],
@@ -1373,75 +1652,87 @@ class ADRMX(Algorithm):
             betas=(self.hparams['beta1'], 0.9))
                                                     
     def update(self, minibatches, unlabeled=None):
-
+        """执行一步更新
+        
+        交替更新判别器和生成器网络。
+        
+        Args:
+            minibatches: (x, y)元组列表
+            unlabeled: 未使用
+            
+        Returns:
+            包含损失值的字典
+        """
         self.update_count += 1
+        # 合并所有环境的输入和标签
         all_x = torch.cat([x for x, _ in minibatches])
         all_y = torch.cat([y for _, y in minibatches])
 
+        # 提取特征
         feat_label = self.featurizer_label(all_x)
         feat_domain = self.featurizer_domain(all_x)
         feat_combined = feat_label - feat_domain
 
-        # get domain labels
+        # 获取域标签
         disc_labels = torch.cat([
-            torch.full((x.shape[0], ), i, dtype=torch.int64, device=all_x.device)
+            torch.full((x.shape[0],), i, dtype=torch.int64, device=all_x.device)
             for i, (x, _) in enumerate(minibatches)
         ])
-        # predict domain feats from disentangled features
+        # 计算判别器输出和损失
         disc_out = self.discriminator(feat_combined) 
-        disc_loss = F.cross_entropy(disc_out, disc_labels) # discriminative loss for final labels (ascend/descend)
+        disc_loss = F.cross_entropy(disc_out, disc_labels)
 
+        # 交替更新
         d_steps_per_g = self.hparams['d_steps_per_g_step']
-        # alternating losses
         if (self.update_count.item() % (1+d_steps_per_g) < d_steps_per_g):
-            # in discriminator turn
+            # 更新判别器
             self.disc_opt.zero_grad()
             disc_loss.backward()
             self.disc_opt.step()
             return {'loss_disc': disc_loss.item()}
         else:
-            # in generator turn
-
-            # calculate CE from x_domain
+            # 更新生成器
+            # 计算域分类损失
             domain_preds = self.classifier_domain(feat_domain)
-            classifier_loss_domain = F.cross_entropy(domain_preds, disc_labels) # domain clf loss
+            classifier_loss_domain = F.cross_entropy(domain_preds, disc_labels)
             classifier_remixed_loss = 0
 
-            # calculate CE and contrastive loss from x_label
+            # 计算标签分类损失和对比损失
             int_preds = self.classifier_label_1(feat_label)
-            classifier_loss_int = F.cross_entropy(int_preds, all_y) # intermediate CE Loss
+            classifier_loss_int = F.cross_entropy(int_preds, all_y)
             cnt_loss_int = self.scl_int(feat_label, all_y, disc_labels)
 
-            # calculate CE and contrastive loss from x_dinv
+            # 计算最终分类损失和对比损失
             final_preds = self.classifier_label_2(feat_combined)
-            classifier_loss_final = F.cross_entropy(final_preds, all_y) # final CE Loss
+            classifier_loss_final = F.cross_entropy(final_preds, all_y)
             cnt_loss_final = self.scl_final(feat_combined, all_y, disc_labels)
 
-            # remix strategy
+            # 执行remix策略
             for i in range(self.num_classes):
                 indices = torch.where(all_y == i)[0]
                 for _ in range(self.mix_num):
-                    # get two instances from same class with different domains
+                    # 获取同类不同域的两个样本
                     perm = torch.randperm(indices.numel())
                     if len(perm) < 2:
                         continue
                     idx1, idx2 = perm[:2]
-                    # remix
+                    # 执行remix
                     remixed_feat = feat_combined[idx1] + feat_domain[idx2]
-                    # make prediction
+                    # 计算预测和损失
                     pred = self.classifier_label_1(remixed_feat.view(1,-1))
-                    # accumulate the loss
                     classifier_remixed_loss += F.cross_entropy(pred.view(1, -1), all_y[idx1].view(-1))
-            # normalize
+            # 标准化remix损失
             classifier_remixed_loss /= (self.num_classes * self.mix_num)
 
-            # generator loss negates the discrimination loss (negative update)
+            # 计算生成器总损失
             gen_loss = (classifier_loss_int +
                         classifier_loss_final +
                         self.hparams["dclf_lambda"] * classifier_loss_domain +
                         self.hparams["rmxd_lambda"] * classifier_remixed_loss +
                         self.hparams['cnt_lambda'] * (cnt_loss_int + cnt_loss_final) + 
                         (self.hparams['disc_lambda'] * -disc_loss))
+            
+            # 更新参数
             self.disc_opt.zero_grad()
             self.opt.zero_grad()
             gen_loss.backward()
@@ -1454,8 +1745,15 @@ class ADRMX(Algorithm):
                 'loss_clf_fin': classifier_loss_final.item(), 
                 'loss_dmn': classifier_loss_domain.item(), 
                 'loss_disc': disc_loss.item(),
-                'loss_remixed': classifier_remixed_loss.item(),
-                }
+                'loss_remixed': classifier_remixed_loss.item()}
     
     def predict(self, x):
+        """预测输入数据的标签
+        
+        Args:
+            x: 输入数据
+            
+        Returns:
+            预测的对数概率
+        """
         return self.network(x)

@@ -35,6 +35,7 @@ from numbers import Number
 import math
 import numpy as np
 import torch
+from sklearn.metrics import f1_score
 
 
 def distance(h1, h2):
@@ -461,6 +462,61 @@ def accuracy(network, loader, weights, device):
     
     network.train()  # 恢复训练模式
     return correct / total  # 返回加权准确率
+
+def f1_score_metric(network, loader, weights, device, average='macro'):
+    """计算模型在给定数据集上的F1分数
+    
+    支持加权样本，可用于不平衡数据集的评估。
+    
+    Args:
+        network: 要评估的神经网络模型
+        loader: 数据加载器，提供批次数据和标签
+        weights: 样本权重列表，None表示所有样本权重相等
+        device: 计算设备（如'cuda'或'cpu'）
+        average: 平均方式，可选'macro', 'micro', 'weighted', 'binary'
+        
+    Returns:
+        float: 加权F1分数
+    """
+    all_preds = []
+    all_targets = []
+    all_weights = []
+    
+    network.eval()  # 设置为评估模式
+    with torch.no_grad():  # 禁用梯度计算
+        for x, y in loader:
+            # 将数据和标签移至指定设备
+            x = x.to(device)
+            y = y.to(device)
+            
+            # 获取模型预测
+            p = network.predict(x)
+            
+            # 获取预测类别
+            if p.size(1) == 1:  # 二分类
+                preds = p.gt(0).long().squeeze(1)
+            else:  # 多分类
+                preds = p.argmax(1)
+            
+            # 收集预测和目标标签
+            all_preds.extend(preds.cpu().numpy())
+            all_targets.extend(y.cpu().numpy())
+            
+            # 收集权重（如果提供）
+            if weights is not None:
+                weights_offset = len(all_weights)
+                batch_weights = weights[weights_offset : weights_offset + len(x)]
+                all_weights.extend(batch_weights.numpy())
+    
+    network.train()  # 恢复训练模式
+    
+    # 计算F1分数
+    if weights is not None:
+        # 使用加权F1分数
+        return f1_score(all_targets, all_preds, average=average, sample_weight=all_weights)
+    else:
+        # 使用普通F1分数
+        return f1_score(all_targets, all_preds, average=average)
 
 class Tee:
     def __init__(self, fname, mode="a"):

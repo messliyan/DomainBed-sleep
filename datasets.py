@@ -128,15 +128,22 @@ class MultipleEnvironmentEEGDataset(MultipleDomainDataset):
     适用于域适应和域泛化任务。
     """
     # 脑电数据训练步数
-    N_STEPS = 8000
+    N_STEPS = 15000
     # 检查点保存频率
-    CHECKPOINT_FREQ = 800
+    CHECKPOINT_FREQ = 1000
     # 数据加载的工作线程数
     N_WORKERS = 8
-    # 输入形状：单通道，3000个数据点（对应30秒脑电信号，采样率100Hz）
+    # 默认输入形状：单通道，3000个数据点（对应30秒脑电信号，采样率100Hz）
     INPUT_SHAPE = (1, 3000)
     # 类别数量：5个睡眠阶段（清醒W, 浅睡N1, 中睡N2, 深睡N3, 快速眼动REM）
     num_classes = 5
+    # 各环境特定参数配置
+    ENVIRONMENT_PARAMS = {
+        "shhs": {
+            "samples_per_window": 3750  # 125Hz * 30s = 3750
+        }
+        # 其他环境默认为3000点(100Hz * 30s)
+    }
 
     def __init__(self, root, test_envs, hparams):
         """初始化多环境脑电数据集
@@ -147,15 +154,27 @@ class MultipleEnvironmentEEGDataset(MultipleDomainDataset):
             hparams: 超参数字典
         """
         super().__init__()
-        # 动态获取环境列表（子目录名称）
-        environments = [f.name for f in os.scandir(root) if f.is_dir()]
-        environments = sorted(environments)  # 排序确保环境顺序一致
+        # 优先使用子类定义的ENVIRONMENTS列表，如果存在的话
+        if hasattr(self, 'ENVIRONMENTS') and self.ENVIRONMENTS is not None:
+            environments = self.ENVIRONMENTS
+            print(f"使用预定义的环境列表: {environments}")
+        else:
+            # 否则动态获取环境列表（子目录名称）
+            environments = [f.name for f in os.scandir(root) if f.is_dir()]
+            environments = sorted(environments)  # 排序确保环境顺序一致
+            print(f"动态扫描到的环境列表: {environments}")
    
         # 初始化数据集列表，每个元素对应一个环境的数据集
         self.datasets = []
+        # 存储每个环境的输入形状
+        self.environment_input_shapes = []
         
         # 为每个环境创建数据集
         for i, environment in enumerate(environments):
+            # 获取环境特定参数
+            env_params = self._get_environment_params(environment)
+            samples_per_window = env_params.get("samples_per_window", 3000)
+            
             # 构建环境路径
             env_path = os.path.join(root, environment)
             # 加载该环境下所有的npz文件数据
@@ -163,12 +182,22 @@ class MultipleEnvironmentEEGDataset(MultipleDomainDataset):
             
             # 创建环境数据集
             if len(env_data) > 0:
-                # 将NumPy数组转换为PyTorch张量，并添加通道维度
+                # 将NumPy数组转换为PyTorch张量，并确保正确的维度格式
+                data_tensor = torch.FloatTensor(env_data)
+                # 移除可能存在的额外维度
+                data_tensor = torch.squeeze(data_tensor)
+                # 确保数据是二维的 [N, samples_per_window]，然后添加通道维度
+                if len(data_tensor.shape) == 1:
+                    data_tensor = data_tensor.reshape(-1, samples_per_window)
+              
+                data_tensor = data_tensor.unsqueeze(1)
                 self.datasets.append(TensorDataset(
-                    torch.FloatTensor(env_data).unsqueeze(1),  # 添加通道维度，形状变为 [N, 1, 3000]
+                    data_tensor,
                     torch.LongTensor(env_labels)  # 标签应为长整型
                 ))
-                print(f"成功加载环境 {environment}: {len(env_data)} 个样本")
+                # 保存当前环境的输入形状
+                self.environment_input_shapes.append((1, samples_per_window))
+                print(f"成功加载环境 {environment}: {len(env_data)} 个样本, 输入形状: (1, {samples_per_window})")
             else:
                 # 如果环境中没有数据，创建空数据集
                 print(f"警告: 环境 {environment} 没有有效数据")
@@ -176,10 +205,27 @@ class MultipleEnvironmentEEGDataset(MultipleDomainDataset):
                     torch.FloatTensor([]),
                     torch.LongTensor([])
                 ))
+                # 空数据集使用默认输入形状
+                self.environment_input_shapes.append(self.INPUT_SHAPE)
         
-        # 设置输入形状
+        # 设置默认输入形状
         self.input_shape = self.INPUT_SHAPE
 
+    def _get_environment_params(self, environment):
+        """获取特定环境的参数
+        
+        Args:
+            environment: 环境名称
+            
+        Returns:
+            包含环境特定参数的字典
+        """
+        # 如果环境在预定义参数中，则返回对应的参数，否则使用默认参数
+        if environment in self.ENVIRONMENT_PARAMS:
+            return self.ENVIRONMENT_PARAMS[environment]
+        else:
+            return {}
+            
     def _load_environment_data(self, env_path):
         """加载指定环境路径下的所有npz文件数据
         
@@ -241,8 +287,8 @@ class SleepDataset(MultipleEnvironmentEEGDataset):
     """
     # 定义环境名称列表（数据集）
     # 包含：SHHS (Sleep Heart Health Study) 和 Sleep-EDF-78 数据集
-    # ENVIRONMENTS = ["sleep-edf-20", "sleep-edf-78", "shhs"]
-    ENVIRONMENTS = ["sleep-edf-20", "sleep-edf-78"]
+    ENVIRONMENTS = ["sleep-edf-78", "shhs"]
+    # ENVIRONMENTS = ["sleep-edf-20", "sleep-edf-78"]
     
     def __init__(self, root, test_envs, hparams):
         """初始化睡眠数据集

@@ -128,9 +128,9 @@ class MultipleEnvironmentEEGDataset(MultipleDomainDataset):
     适用于域适应和域泛化任务。
     """
     # 脑电数据训练步数
-    N_STEPS = 3000
+    N_STEPS = 8000
     # 检查点保存频率
-    CHECKPOINT_FREQ = 1000
+    CHECKPOINT_FREQ = 800
     # 数据加载的工作线程数
     N_WORKERS = 8
     # 输入形状：单通道，3000个数据点（对应30秒脑电信号，采样率100Hz）

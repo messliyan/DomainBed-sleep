@@ -3,7 +3,7 @@
 import unittest
 import torch
 
-import networks
+import MRCNN
 
 
 class TestNetworks(unittest.TestCase):

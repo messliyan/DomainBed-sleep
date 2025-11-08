@@ -1,53 +1,61 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+# 导入必要的Python库
+import argparse  # 命令行参数解析
+import collections  # 高性能容器数据类型
+import json  # JSON数据处理
+import os  # 操作系统接口
+import random  # 随机数生成
+import sys  # 系统相关参数和函数
+import time  # 时间相关函数
 
-import argparse
-import collections
-import json
-import os
-import random
-import sys
-import time
-
-import PIL
-import numpy as np
-import torch
-import torch.utils.data
-import torchvision
-import algorithms
-import datasets
-import hparams_registry
-from lib import misc
-from lib.fast_data_loader import FastDataLoader, InfiniteDataLoaderWithoutReplacement
+import numpy as np  # 科学计算库
+import torch  # 深度学习框架
+import torch.utils.data  # PyTorch数据工具
+import algorithms  # 自定义算法模块
+import datasets  # 自定义数据集模块
+import hparams_registry  # 超参数注册表
+from lib import misc  # 自定义工具函数
+from lib.fast_data_loader import FastDataLoader, InfiniteDataLoaderWithoutReplacement  # 高效数据加载器
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Domain generalization')
-    parser.add_argument('--data_dir', type=str)
-    parser.add_argument('--dataset', type=str, default="RotatedMNIST")
-    parser.add_argument('--algorithm', type=str, default="ERM")
-    parser.add_argument('--task', type=str, default="domain_generalization",
+    # 创建命令行参数解析器
+    parser = argparse.ArgumentParser(description='Domain adaptation')
+    # 添加命令行参数
+    parser.add_argument('--data_dir', type=str, default='eeg_data', 
+                        help='数据目录路径，相对路径将被解析为项目根目录下的路径')
+
+    parser.add_argument('--dataset', type=str, default="SleepDataset")
+    parser.add_argument('--algorithm', type=str, default="DANN")
+    parser.add_argument('--task', type=str, default="domain_adaptation",
         choices=["domain_generalization", "domain_adaptation"])
     parser.add_argument('--hparams', type=str,
         help='JSON-serialized hparams dict')
     parser.add_argument('--hparams_seed', type=int, default=0,
         help='Seed for random hparams (0 means "default hparams")')
-    parser.add_argument('--trial_seed', type=int, default=0,
+    parser.add_argument('--trial_seed', type=int, default=34,
         help='Trial number (used for seeding split_dataset and '
         'random_hparams).')
-    parser.add_argument('--seed', type=int, default=0,
+    parser.add_argument('--seed', type=int, default=34,
         help='Seed for everything else')
     parser.add_argument('--steps', type=int, default=None,
         help='Number of steps. Default is dataset-dependent.')
     parser.add_argument('--checkpoint_freq', type=int, default=None,
         help='Checkpoint every N steps. Default is dataset-dependent.')
-    parser.add_argument('--test_envs', type=int, nargs='+', default=[0])
-    parser.add_argument('--output_dir', type=str, default="train_output")
-    parser.add_argument('--holdout_fraction', type=float, default=0.2)
-    parser.add_argument('--uda_holdout_fraction', type=float, default=0,
-        help="For domain adaptation, % of test to use unlabeled for training.")
+    parser.add_argument('--test_envs', type=int, nargs='+', default=[0],
+                        help='指定索引为1的环境作为测试环境（目标域）')
+    parser.add_argument('--output_dir', type=str, default="results/dann_test_env0")
+    parser.add_argument('--holdout_fraction', type=float, default=0.2,
+                        help="")
+    parser.add_argument('--uda_holdout_fraction', type=float, default=0.8,
+        help="")
     parser.add_argument('--skip_model_save', action='store_true')
     parser.add_argument('--save_model_every_checkpoint', action='store_true')
     parser.add_argument('--auto_lr', action='store_true')
-    args = parser.parse_args()
+    args = parser.parse_args()  # 解析命令行参数
+    
+    # 智能处理数据路径：如果是相对路径，则视为相对于项目根目录
+    if args.data_dir and not os.path.isabs(args.data_dir):
+        PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        args.data_dir = os.path.join(PROJECT_ROOT, args.data_dir)
     
 
     # If we ever want to implement checkpointing, just persist these values
@@ -62,11 +70,9 @@ if __name__ == "__main__":
     print("Environment:")
     print("\tPython: {}".format(sys.version.split(" ")[0]))
     print("\tPyTorch: {}".format(torch.__version__))
-    print("\tTorchvision: {}".format(torchvision.__version__))
     print("\tCUDA: {}".format(torch.version.cuda))
     print("\tCUDNN: {}".format(torch.backends.cudnn.version()))
     print("\tNumPy: {}".format(np.__version__))
-    print("\tPIL: {}".format(PIL.__version__))
 
     print('Args:')
     for k, v in sorted(vars(args).items()):
@@ -113,11 +119,11 @@ if __name__ == "__main__":
     # domain generalization and domain adaptation results, then domain
     # generalization algorithms should create the same 'uda-splits', which will
     # be discared at training.
+    
 
-
-    in_splits = []
-    out_splits = []
-    uda_splits = []
+    in_splits = [] # ：标记训练数据，用于源域训练
+    out_splits = [] # 测试评估数据，用于性能评估
+    uda_splits = [] # 未标记数据，用于域适应训练
     for env_i, env in enumerate(dataset):
         uda = []
 

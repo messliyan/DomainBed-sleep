@@ -30,7 +30,7 @@ except:
     backpack = None
 
 # 导入网络模块和工具函数
-import networks
+import MRCNN
 from lib.misc import (
     random_pairs_of_minibatches, split_meta_train_test, ParamDict,
     MovingAverage, ErmPlusPlusMovingAvg, l2_between_dicts, proj, Nonparametric,
@@ -518,11 +518,16 @@ class AbstractDANN(Algorithm):
         self.class_balance = class_balance
 
         # Algorithms - 使用CNNDA网络
-        self.featurizer = networks.CNNDA()
+        self.featurizer = networks.Featurizer()
         # 设置n_outputs属性，用于域判别器初始化
         self.featurizer.n_outputs = self.featurizer.feature_dim
         # 创建一个新的分类器接口，与原有架构兼容
         self.classifier = lambda features: self.featurizer(features, return_features=False)
+        self.featurizer = networks.Featurizer(input_shape, self.hparams)
+        self.classifier = networks.Classifier(
+            self.featurizer.n_outputs,
+            num_classes,
+            self.hparams['nonlinear_classifier'])
         self.discriminator = networks.MLP(self.featurizer.n_outputs,
             num_domains, self.hparams)
         self.class_embeddings = nn.Embedding(num_classes,

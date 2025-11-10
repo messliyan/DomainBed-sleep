@@ -696,11 +696,8 @@ class AbstractDANN(Algorithm):
         self.register_buffer('update_count', torch.tensor([0]))
         self.conditional = conditional
         self.class_balance = class_balance
+
         self.grl = networks.GradientReversalLayer.apply
-        
-        # 添加epoch计数器和steps_per_epoch信息
-        self.register_buffer('current_epoch', torch.tensor([0]))
-        self.steps_per_epoch = hparams.get('steps_per_epoch', 100)  # 默认值100
 
         # 创建网络组件
         self.featurizer = networks.Featurizer(input_shape, self.hparams)
@@ -736,21 +733,20 @@ class AbstractDANN(Algorithm):
         self.lr_schedule = []
         self.lr_schedule_changes = 0
         # 创建源域学习率调度器 - 监控源域ACC
-        # 优化参数以增加容错性：增大patience，减小factor变化率，增大threshold允许更大波动
         self.source_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             self.gen_opt,  # 生成器优化器
-            mode='min',    # 监控最小损失
-            factor=0.5,    # 学习率降低因子 (从0.3改为0.5，变化更平缓)
-            patience=15,   # 容忍没有改善的训练轮数 (从5改为15，增加容错)
-            threshold=0.005,  # 度量变化阈值 (从0.001改为0.005，允许更大波动)
+            mode='min',    # 基于负准确率进行优化
+            factor=0.3,    # 学习率降低因子
+            patience=5,    # 容忍没有改善的训练轮数
+            threshold=0.001,  # 度量变化阈值
         )
         # 创建目标域学习率调度器 - 监控目标域损失
         self.target_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             self.disc_opt,  # 判别器优化器
             mode='min',    # 监控最小损失
-            factor=0.5,    # 学习率降低因子 (从0.3改为0.5)
-            patience=15,   # 容忍没有改善的训练轮数 (从5改为15)
-            threshold=0.005,  # 度量变化阈值 (从0.001改为0.005)
+            factor=0.3,    # 学习率降低因子
+            patience=5,    # 容忍没有改善的训练轮数
+            threshold=0.001,  # 度量变化阈值
         )
 
     def update(self, minibatches, unlabeled=None):
@@ -850,21 +846,18 @@ class AbstractDANN(Algorithm):
                 
                 # 目标域学习率调度 - 监控判别器损失
                 with torch.no_grad():
-                    # 只在epoch结束时调用学习率调度器
-                    is_epoch_end = (self.update_count.item() % self.steps_per_epoch == 0)
-                    if is_epoch_end:
-                        # 使用判别器损失进行学习率调度
-                        self.target_scheduler.step(disc_loss)
+                    # 使用判别器损失进行学习率调度
+                    self.target_scheduler.step(disc_loss)
+                    
+                    # 记录学习率变化
+                    if hasattr(self.target_scheduler, '_last_lr'):
+                        current_lr = self.target_scheduler._last_lr
+                        self.lr_schedule.append(current_lr)
                         
-                        # 记录学习率变化
-                        if hasattr(self.target_scheduler, '_last_lr'):
-                            current_lr = self.target_scheduler._last_lr
-                            self.lr_schedule.append(current_lr)
-                            
-                            # 记录学习率变化次数
-                            if len(self.lr_schedule) > 1:
-                                if self.lr_schedule[-1] != self.lr_schedule[-2]:
-                                    self.lr_schedule_changes += 1
+                        # 记录学习率变化次数
+                        if len(self.lr_schedule) > 1:
+                            if self.lr_schedule[-1] != self.lr_schedule[-2]:
+                                self.lr_schedule_changes += 1
                 
                 return {
                     'disc_loss': disc_loss.item(),
@@ -882,24 +875,18 @@ class AbstractDANN(Algorithm):
             
             # 使用分类器损失进行学习率调度（比准确率计算更高效）
             with torch.no_grad():
-                # 只在epoch结束时调用学习率调度器
-                is_epoch_end = (self.update_count.item() % self.steps_per_epoch == 0)
-                if is_epoch_end:
-                    # 直接使用已计算的分类器损失进行学习率调度
-                    self.source_scheduler.step(classifier_loss)
+                # 直接使用已计算的分类器损失进行学习率调度
+                self.source_scheduler.step(classifier_loss)
+                
+                # 记录学习率变化
+                if hasattr(self.source_scheduler, '_last_lr'):
+                    current_lr = self.source_scheduler._last_lr
+                    self.lr_schedule.append(current_lr)
                     
-                    # 记录学习率变化
-                    if hasattr(self.source_scheduler, '_last_lr'):
-                        current_lr = self.source_scheduler._last_lr
-                        self.lr_schedule.append(current_lr)
-                        
-                        # 记录学习率变化次数
-                        if len(self.lr_schedule) > 1:
-                            if self.lr_schedule[-1] != self.lr_schedule[-2]:
-                                self.lr_schedule_changes += 1
-                    
-                    # 更新epoch计数器
-                    self.current_epoch += 1
+                    # 记录学习率变化次数
+                    if len(self.lr_schedule) > 1:
+                        if self.lr_schedule[-1] != self.lr_schedule[-2]:
+                            self.lr_schedule_changes += 1
             
             return {
                 'gen_loss': gen_loss.item(),

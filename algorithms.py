@@ -92,20 +92,6 @@ class Algorithm(torch.nn.Module):
     def update(self, minibatches, unlabeled=None):
         """执行一步更新
         
-        实现完整的DANN更新逻辑，包括：
-        1. 从源域数据学习分类任务
-        2. 使用域对抗训练学习域不变特征
-        3. 利用目标域无标签数据进行域适应
-        
-        Args:
-            minibatches: (x, y)元组列表，来自源域
-            unlabeled: 来自目标域的无标签数据列表
-            
-        Returns:
-            包含各种损失值的字典
-        """
-        """执行一步更新
-        
         给定所有环境的(x, y)元组列表，执行一次参数更新。
         当任务是域适应时，还可以接受来自测试域的无标签小批量数据。
         
@@ -715,39 +701,19 @@ class AbstractDANN(Algorithm):
             self.featurizer.n_outputs)
 
         # 创建优化器
-        self.disc_opt = torch.optim.AdamW(
+        self.disc_opt = torch.optim.Adam(
             (list(self.discriminator.parameters()) +
                 list(self.class_embeddings.parameters())),
             lr=self.hparams["lr_d"],
             weight_decay=self.hparams['weight_decay_d'],
             betas=(self.hparams['beta1'], 0.9))
 
-        self.gen_opt = torch.optim.AdamW(
+        self.gen_opt = torch.optim.Adam(
             (list(self.featurizer.parameters()) +
                 list(self.classifier.parameters())),
             lr=self.hparams["lr_g"],
             weight_decay=self.hparams['weight_decay_g'],
             betas=(self.hparams['beta1'], 0.9))
-        
-        # 初始化学习率调度相关变量
-        self.lr_schedule = []
-        self.lr_schedule_changes = 0
-        # 创建源域学习率调度器 - 监控源域ACC
-        self.source_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            self.gen_opt,  # 生成器优化器
-            mode='min',    # 基于负准确率进行优化
-            factor=0.3,    # 学习率降低因子
-            patience=5,    # 容忍没有改善的训练轮数
-            threshold=0.001,  # 度量变化阈值
-        )
-        # 创建目标域学习率调度器 - 监控目标域损失
-        self.target_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            self.disc_opt,  # 判别器优化器
-            mode='min',    # 监控最小损失
-            factor=0.3,    # 学习率降低因子
-            patience=5,    # 容忍没有改善的训练轮数
-            threshold=0.001,  # 度量变化阈值
-        )
 
     def update(self, minibatches, unlabeled=None):
         """执行一步更新
@@ -840,29 +806,12 @@ class AbstractDANN(Algorithm):
         d_steps_per_g = self.hparams['d_steps_per_g_step']
         if (self.update_count.item() % (1 + d_steps_per_g) < d_steps_per_g):
             # 更新判别器
-                self.disc_opt.zero_grad()
-                disc_loss.backward()
-                self.disc_opt.step()
-                
-                # 目标域学习率调度 - 监控判别器损失
-                with torch.no_grad():
-                    # 使用判别器损失进行学习率调度
-                    self.target_scheduler.step(disc_loss)
-                    
-                    # 记录学习率变化
-                    if hasattr(self.target_scheduler, '_last_lr'):
-                        current_lr = self.target_scheduler._last_lr
-                        self.lr_schedule.append(current_lr)
-                        
-                        # 记录学习率变化次数
-                        if len(self.lr_schedule) > 1:
-                            if self.lr_schedule[-1] != self.lr_schedule[-2]:
-                                self.lr_schedule_changes += 1
-                
-                return {
-                    'disc_loss': disc_loss.item(),
-                    'disc_lr': self.target_scheduler._last_lr[0] if hasattr(self.target_scheduler, '_last_lr') else self.hparams["lr_d"]
-                }
+            self.disc_opt.zero_grad()
+            disc_loss.backward()
+            self.disc_opt.step()
+            return {
+                'disc_loss': disc_loss.item()
+            }
         else:
             # 更新生成器（特征提取器和分类器）
             # 生成器的目标是最小化分类损失，同时最大化域对抗损失（通过负号实现）
@@ -873,24 +822,8 @@ class AbstractDANN(Algorithm):
             gen_loss.backward()
             self.gen_opt.step()
             
-            # 使用分类器损失进行学习率调度（比准确率计算更高效）
-            with torch.no_grad():
-                # 直接使用已计算的分类器损失进行学习率调度
-                self.source_scheduler.step(classifier_loss)
-                
-                # 记录学习率变化
-                if hasattr(self.source_scheduler, '_last_lr'):
-                    current_lr = self.source_scheduler._last_lr
-                    self.lr_schedule.append(current_lr)
-                    
-                    # 记录学习率变化次数
-                    if len(self.lr_schedule) > 1:
-                        if self.lr_schedule[-1] != self.lr_schedule[-2]:
-                            self.lr_schedule_changes += 1
-            
             return {
-                'gen_loss': gen_loss.item(),
-                'class_lr': self.source_scheduler._last_lr[0] if hasattr(self.source_scheduler, '_last_lr') else self.hparams["lr_g"]
+                'gen_loss': gen_loss.item()
             }
 
     def predict(self, x):

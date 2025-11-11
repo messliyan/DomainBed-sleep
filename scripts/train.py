@@ -233,6 +233,12 @@ if __name__ == "__main__":
     # 将实际训练步数设置到算法的超参数中，确保max_steps与实际训练步数一致
     hparams['n_steps'] = n_steps
 
+    # 计算周期的训练步数（取所有域数据加载器中样本数的最小值）
+    # 在多环境训练中，一个"epoch"被重新定义为：完成足够多的迭代，使得最小的环境数据被理论上完整遍历一次（以batch_size为单位计算）。
+    steps_per_epoch = min([len(env) / hparams['batch_size'] for env, _ in in_splits])
+    # 将steps_per_epoch添加到hparams中，以便在算法中使用
+    hparams['steps_per_epoch'] = steps_per_epoch
+
      # 初始化算法模型，参数包括输入形状、类别数、域数）和超参数
     # 使用修改后的hparams创建算法实例，包含steps_per_epoch信息
     algorithm = algorithm_class(dataset.input_shape, dataset.num_classes, len(dataset), hparams)
@@ -253,11 +259,7 @@ if __name__ == "__main__":
     # 用于存储每个检查点的指标值
     checkpoint_vals = collections.defaultdict(lambda: [])
 
-    # 计算周期的训练步数（取所有域数据加载器中样本数的最小值） 
-    # 在多环境训练中，一个"epoch"被重新定义为：完成足够多的迭代，使得最小的环境数据被理论上完整遍历一次（以batch_size为单位计算）。
-    steps_per_epoch = min([len(env)/hparams['batch_size'] for env,_ in in_splits])
-    # 将steps_per_epoch添加到hparams中，以便在算法中使用
-    hparams['steps_per_epoch'] = steps_per_epoch
+
 
     
     # 定义保存检查点的函数
@@ -320,8 +322,8 @@ if __name__ == "__main__":
                 if '_out' in name or '_uda' in name:
                     acc = misc.accuracy(algorithm, loader, weights, device)
                     results[name+'_acc'] = acc
-                    f1 = misc.f1_score_metric(algorithm, loader, weights, device)
-                    results[name+'_f1'] = f1
+                    # f1 = misc.f1_score_metric(algorithm, loader, weights, device)
+                    # results[name+'_f1'] = f1
 
             # 记录内存使用情况
             results['mem_gb'] = torch.cuda.max_memory_allocated() / (1024.*1024.*1024.)

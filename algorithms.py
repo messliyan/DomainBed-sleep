@@ -700,7 +700,7 @@ class AbstractDANN(Algorithm):
         
         # 添加epoch计数器和steps_per_epoch信息
         self.register_buffer('current_epoch', torch.tensor([0]))
-        self.steps_per_epoch = hparams.get('steps_per_epoch', 100)  # 默认值100
+        self.steps_per_epoch = hparams['steps_per_epoch']  # 默认值100
 
         # 创建网络组件
         self.featurizer = networks.Featurizer(input_shape, self.hparams)
@@ -721,62 +721,46 @@ class AbstractDANN(Algorithm):
         self.disc_opt = torch.optim.AdamW(
             (list(self.discriminator.parameters()) +
                 list(self.class_embeddings.parameters())),
-            lr=self.hparams["lr_d"],
-            weight_decay=self.hparams.get('weight_decay_d', 0.0),
-            betas=(self.hparams['beta1'], self.hparams.get('beta2', 0.9)))
+            lr=self.hparams["lr_d"])  # 使用固定默认值
 
         self.gen_opt = torch.optim.AdamW(
             (list(self.featurizer.parameters()) +
                 list(self.classifier.parameters())),
-            lr=self.hparams["lr_g"],
-            weight_decay=self.hparams.get('weight_decay_g', 0.01),
-            betas=(self.hparams['beta1'], self.hparams.get('beta2', 0.9)))
+            lr=self.hparams["lr_g"])  # 使用固定默认值
         
         # 初始化学习率调度相关变量
         self.lr_schedule = []
         self.lr_schedule_changes = 0
         # 创建源域学习率调度器 - 监控源域ACC
         # 优化参数以增加容错性：增大patience，减小factor变化率，增大threshold允许更大波动
-        # 源域调度器（生成器）：精准贴合 0~5稳→5~15首降→15~25次降→25+稳
+        # 源域调度器（生成器）：使用固定默认值
         self.source_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             self.gen_opt,
-            mode='min',
-            factor=self.hparams.get('source_factor', 0.65),  # 从配置读取学习率衰减因子
-            patience=self.hparams.get('source_patience', 6),  # 从配置读取容忍无改进的epoch数
-            threshold=self.hparams.get('source_threshold', 0.005),  # 从配置读取改进阈值
-            threshold_mode='abs',  # 按绝对差值判定，避免源域小loss误判
-            cooldown=self.hparams.get('source_cooldown', 5),  # 从配置读取冷却期
-            min_lr=self.hparams.get('source_min_lr', 8e-7),  # 从配置读取最小学习率
-            eps=1e-9,  # 处理gen_loss后期小数值精度问题
+            patience=3,
+            factor=0.5
         )
 
-        # 目标域调度器（判别器）：彻底解决LR不变，贴合 8~20首降→20~30次降→30+稳
+        # 目标域调度器（判别器）：使用固定默认值
         self.target_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             self.disc_opt,
-            mode='min',
-            factor=self.hparams.get('target_factor', 0.75),  # 从配置读取学习率衰减因子
-            patience=self.hparams.get('target_patience', 12),  # 从配置读取容忍无改进的epoch数
-            threshold=self.hparams.get('target_threshold', 0.002),  # 从配置读取改进阈值
-            threshold_mode='abs',  # 核心修正！小loss场景下精准判定“无改善”
-            cooldown=self.hparams.get('target_cooldown', 6),  # 从配置读取冷却期
-            min_lr=self.hparams.get('target_min_lr', 6e-7),  # 从配置读取最小学习率
-            eps=1e-10,  # 解决disc_loss接近0（如1e-6）时的浮点精度问题
+            patience=3,
+            factor=0.5
         )
         
-        # 方案三：自适应对抗强度参数 - 平衡版
-        self.lambda_start = self.hparams.get('lambda_start', 0.0)  # 初始对抗损失权重
-        # 降低默认对抗强度，避免过强对抗
-        self.lambda_end = self.hparams.get('lambda_end', self.hparams.get('lambda', 1.0))  # 最终对抗损失权重，默认1.0
-        self.warmup_steps = self.hparams.get('warmup_steps', 2000)  # 延长预热步数至2000
-        self.current_lambda = self.lambda_start  # 当前对抗损失权重
-        self.total_steps = self.hparams.get('n_steps', 10000)  # 总训练步数
+        self.lambda_start =  self.hparams['lambda_start'] # 初始对抗损失权重
+      
+        self.lambda_end = self.hparams['lambda_end']    # 最终对抗损失权重，默认1.0
+        self.warmup_steps =self.hparams['warmup_steps']    # 延长预热步数至2000
+        self.current_lambda =  self.hparams['lambda_start'] 
+        self.total_steps =  self.hparams['n_steps'] # 总训练步数
+
         # 对抗强度的绝对上限，防止过强对抗
-        self.max_lambda = self.hparams.get('max_lambda', 2.0)  # 对抗强度的最大允许值
+        self.max_lambda =  2.0 # 对抗强度的最大允许值
         # 判别器损失下限，用于动态调整对抗强度
-        self.disc_loss_floor = self.hparams.get('disc_loss_floor', 0.1)  # 判别器损失的理想下限值
+        self.disc_loss_floor =  0.1 # 判别器损失的理想下限值
         # 记录历史判别器损失
         self.disc_loss_history = []
-        self.disc_loss_history_length = 10  # 保存最近10步的判别器损失
+        self.disc_loss_history_length = 150  # 保存最近10步的判别器损失
 
     def update(self, minibatches, unlabeled=None):
         """执行一步更新
@@ -879,7 +863,7 @@ class AbstractDANN(Algorithm):
             disc_loss += self.hparams['grad_penalty'] * grad_penalty
         
         # 交替更新判别器和生成器
-        d_steps_per_g = self.hparams.get('d_steps_per_g_step', 1)  # 使用默认值1，确保配置不存在时仍能正常运行
+        d_steps_per_g = self.hparams['d_steps_per_g_step'] # 使用默认值1，确保配置不存在时仍能正常运行
         if (self.update_count.item() % (1 + d_steps_per_g) < d_steps_per_g):
             # 更新判别器
                 self.disc_opt.zero_grad()

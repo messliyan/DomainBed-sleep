@@ -72,43 +72,24 @@ def _hparams(algorithm, dataset, random_seed):
 
     # 算法特定超参数定义
     # 每个代码块对应一种算法的超参数
+    _hparam('lr_g', 1e-4, lambda r: 10 ** r.uniform(-5, -3.5))
+    _hparam('lr_d', 1e-4, lambda r: 10 ** r.uniform(-5, -3.5))
 
     # 1. 域对抗训练算法
     if algorithm in ['DANN', 'CDANN']:  # 域对抗神经网络及其变体
-        # 优化器参数
-        _hparam('beta1', 0.5, lambda r: r.choice([0., 0.5]))  # Adam优化器的beta1参数
-        _hparam('beta2', 0.9, lambda r: r.uniform(0.8, 0.999))  # Adam优化器的beta2参数，默认为0.9
-        _hparam('weight_decay_d', 1e-2, lambda r: 10**r.uniform(-6, -2))  # 判别器权重衰减
-        
         # 对抗训练基础参数
-        _hparam('lambda', 2.0, lambda r: 10**r.uniform(-1, 3))  # 域对抗损失权重
         _hparam('d_steps_per_g_step', 0.5, lambda r: int(2**r.uniform(0, 1)))  # 每个生成器步对应的判别器步数
         _hparam('grad_penalty', 1.0, lambda r: 10**r.uniform(-2, 2))  # 梯度惩罚权重
-        _hparam('max_steps', 10000, lambda r: int(10**r.uniform(3, 5)))  # 最大训练步数，用于计算GRL的alpha系数
         
+        # 自适应对抗强度参数
+        _hparam('warmup_steps', 2000, lambda r: int(10 ** r.uniform(2.5, 4)))  # 预热步数
+        _hparam('lambda_start', 0.0, lambda r: r.uniform(0.0, 0.5))  # 初始对抗损失权重
+        _hparam('lambda_end', 2.0, lambda r: 10 ** r.uniform(-1, 2))  # 最终对抗损失权重
+
         # 判别器网络结构参数
         _hparam('mlp_width', 128, lambda r: int(2 ** r.uniform(5, 9)))  # 判别器MLP宽度
         _hparam('mlp_depth', 2, lambda r: int(r.choice([2, 3, 4])))  # 判别器MLP深度
         _hparam('mlp_dropout', 0.1, lambda r: r.choice([0., 0.1, 0.2, 0.5]))  # 判别器dropout
-        
-        # 自适应对抗强度参数
-        _hparam('lambda_start', 0.0, lambda r: r.uniform(0.0, 0.5))  # 初始对抗损失权重
-        _hparam('lambda_end', 2.0, lambda r: 10**r.uniform(-1, 2))  # 最终对抗损失权重
-        _hparam('warmup_steps', 1000, lambda r: int(10**r.uniform(2.5, 4)))  # 预热步数
-        
-        # 学习率调度器参数 - 源域（生成器）
-        _hparam('source_factor', 0.65, lambda r: r.uniform(0.5, 0.8))  # 学习率衰减因子
-        _hparam('source_patience', 6, lambda r: int(r.choice([4, 5, 6, 7])))  # 容忍无改进的epoch数
-        _hparam('source_threshold', 0.005, lambda r: 10**r.uniform(-3, -2))  # 改进阈值
-        _hparam('source_cooldown', 5, lambda r: int(r.choice([3, 4, 5, 6])))  # 冷却期
-        _hparam('source_min_lr', 8e-7, lambda r: 10**r.uniform(-7.5, -6.5))  # 最小学习率
-        
-        # 学习率调度器参数 - 目标域（判别器）
-        _hparam('target_factor', 0.75, lambda r: r.uniform(0.6, 0.9))  # 学习率衰减因子
-        _hparam('target_patience', 12, lambda r: int(r.choice([10, 11, 12, 13])))  # 容忍无改进的epoch数
-        _hparam('target_threshold', 0.002, lambda r: 10**r.uniform(-4, -2))  # 改进阈值
-        _hparam('target_cooldown', 6, lambda r: int(r.choice([4, 5, 6, 7])))  # 冷却期
-        _hparam('target_min_lr', 6e-7, lambda r: 10**r.uniform(-7.5, -6.5))  # 最小学习率
 
 
     elif algorithm == "SagNet":
@@ -198,11 +179,7 @@ def _hparams(algorithm, dataset, random_seed):
     else:
         _hparam('batch_size', 128, lambda r: int(2**r.uniform(3, 5.5)))
 
-    _hparam('lr_g', 1e-3, lambda r: 10**r.uniform(-5, -3.5))
 
-    _hparam('lr_d', 1e-3, lambda r: 10**r.uniform(-5, -3.5))
-
-    _hparam('weight_decay_g', 0.01, lambda r: 10**r.uniform(-6, -2))
 
     return hparams
 

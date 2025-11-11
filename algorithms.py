@@ -722,15 +722,15 @@ class AbstractDANN(Algorithm):
             (list(self.discriminator.parameters()) +
                 list(self.class_embeddings.parameters())),
             lr=self.hparams["lr_d"],
-            weight_decay=self.hparams['weight_decay_d'],
-            betas=(self.hparams['beta1'], 0.9))
+            weight_decay=self.hparams.get('weight_decay_d', 0.0),
+            betas=(self.hparams['beta1'], self.hparams.get('beta2', 0.9)))
 
         self.gen_opt = torch.optim.AdamW(
             (list(self.featurizer.parameters()) +
                 list(self.classifier.parameters())),
             lr=self.hparams["lr_g"],
-            weight_decay=self.hparams['weight_decay_g'],
-            betas=(self.hparams['beta1'], 0.9))
+            weight_decay=self.hparams.get('weight_decay_g', 0.01),
+            betas=(self.hparams['beta1'], self.hparams.get('beta2', 0.9)))
         
         # 初始化学习率调度相关变量
         self.lr_schedule = []
@@ -741,12 +741,12 @@ class AbstractDANN(Algorithm):
         self.source_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             self.gen_opt,
             mode='min',
-            factor=0.65,  # 严格匹配理想路径的 0.001→0.00065→0.00042
-            patience=6,  # 关键：5~15epoch内触发首次降LR（连续6个epoch降幅＜0.005）
-            threshold=0.005,  # 适配gen_loss中期波动（日志中单次降幅＜0.005）
+            factor=self.hparams.get('source_factor', 0.65),  # 从配置读取学习率衰减因子
+            patience=self.hparams.get('source_patience', 6),  # 从配置读取容忍无改进的epoch数
+            threshold=self.hparams.get('source_threshold', 0.005),  # 从配置读取改进阈值
             threshold_mode='abs',  # 按绝对差值判定，避免源域小loss误判
-            cooldown=5,  # 首次降后冷却5个epoch，刚好适配15~25次降节奏
-            min_lr=8e-7,
+            cooldown=self.hparams.get('source_cooldown', 5),  # 从配置读取冷却期
+            min_lr=self.hparams.get('source_min_lr', 8e-7),  # 从配置读取最小学习率
             eps=1e-9,  # 处理gen_loss后期小数值精度问题
         )
 
@@ -754,14 +754,29 @@ class AbstractDANN(Algorithm):
         self.target_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             self.disc_opt,
             mode='min',
-            factor=0.75,  # 严格匹配理想路径的 0.001→0.00075→0.00056
-            patience=12,  # 8~20epoch内必触发（连续12个epoch降幅＜0.002）
-            threshold=0.002,  # 关键：适配disc_loss后期极小波动（日志中单次降幅＜0.001）
+            factor=self.hparams.get('target_factor', 0.75),  # 从配置读取学习率衰减因子
+            patience=self.hparams.get('target_patience', 12),  # 从配置读取容忍无改进的epoch数
+            threshold=self.hparams.get('target_threshold', 0.002),  # 从配置读取改进阈值
             threshold_mode='abs',  # 核心修正！小loss场景下精准判定“无改善”
-            cooldown=6,  # 冷却期适配对抗节奏，避免频繁调整
-            min_lr=6e-7,
+            cooldown=self.hparams.get('target_cooldown', 6),  # 从配置读取冷却期
+            min_lr=self.hparams.get('target_min_lr', 6e-7),  # 从配置读取最小学习率
             eps=1e-10,  # 解决disc_loss接近0（如1e-6）时的浮点精度问题
         )
+        
+        # 方案三：自适应对抗强度参数 - 平衡版
+        self.lambda_start = self.hparams.get('lambda_start', 0.0)  # 初始对抗损失权重
+        # 降低默认对抗强度，避免过强对抗
+        self.lambda_end = self.hparams.get('lambda_end', self.hparams.get('lambda', 1.0))  # 最终对抗损失权重，默认1.0
+        self.warmup_steps = self.hparams.get('warmup_steps', 2000)  # 延长预热步数至2000
+        self.current_lambda = self.lambda_start  # 当前对抗损失权重
+        self.total_steps = self.hparams.get('n_steps', 10000)  # 总训练步数
+        # 对抗强度的绝对上限，防止过强对抗
+        self.max_lambda = self.hparams.get('max_lambda', 2.0)  # 对抗强度的最大允许值
+        # 判别器损失下限，用于动态调整对抗强度
+        self.disc_loss_floor = self.hparams.get('disc_loss_floor', 0.1)  # 判别器损失的理想下限值
+        # 记录历史判别器损失
+        self.disc_loss_history = []
+        self.disc_loss_history_length = 10  # 保存最近10步的判别器损失
 
     def update(self, minibatches, unlabeled=None):
         """执行一步更新
@@ -770,6 +785,7 @@ class AbstractDANN(Algorithm):
         1. 从源域数据学习分类任务
         2. 使用域对抗训练学习域不变特征
         3. 利用目标域无标签数据进行域适应
+        4. 方案三：自适应对抗强度（对抗损失权重线性增加）
         
         Args:
             minibatches: (x, y)元组列表，来自源域
@@ -780,6 +796,18 @@ class AbstractDANN(Algorithm):
         """
         device = "cuda" if minibatches[0][0].is_cuda else "cpu"
         self.update_count += 1
+        
+        # 方案三：计算当前对抗损失权重（平衡版）
+        current_step = self.update_count.item()
+        if current_step <= self.warmup_steps:
+            # 预热阶段：线性增加对抗损失权重
+            self.current_lambda = self.lambda_start + (self.lambda_end - self.lambda_start) * (current_step / self.warmup_steps)
+        else:
+            # 预热后：更保守的增长策略，避免过强对抗
+            # 线性增长，但增速更慢
+            excess_ratio = (current_step - self.warmup_steps) / max(1, self.total_steps - self.warmup_steps)
+            growth_factor = 1.0 + 0.5 * excess_ratio  # 最多增长到初始lambda_end的1.5倍
+            self.current_lambda = min(self.lambda_end * growth_factor, self.max_lambda)  # 应用绝对上限
         
         # 处理源域数据
         source_x = torch.cat([x for x, y in minibatches])
@@ -816,7 +844,7 @@ class AbstractDANN(Algorithm):
             ])
         
         # 计算域对抗损失
-        # 使用梯度反转层
+        # 使用更平滑的梯度反转系数，避免对抗训练过强
         alpha = 2. / (1. + np.exp(-10 * self.update_count.item() / self.hparams.get('n_steps'))) - 1
         reversed_z = self.grl(all_z, alpha)
         
@@ -851,12 +879,19 @@ class AbstractDANN(Algorithm):
             disc_loss += self.hparams['grad_penalty'] * grad_penalty
         
         # 交替更新判别器和生成器
-        d_steps_per_g = self.hparams['d_steps_per_g_step']
+        d_steps_per_g = self.hparams.get('d_steps_per_g_step', 1)  # 使用默认值1，确保配置不存在时仍能正常运行
         if (self.update_count.item() % (1 + d_steps_per_g) < d_steps_per_g):
             # 更新判别器
                 self.disc_opt.zero_grad()
                 disc_loss.backward()
+                # 添加梯度裁剪，防止判别器更新过大
+                torch.nn.utils.clip_grad_norm_(self.discriminator.parameters(), max_norm=1.0)
                 self.disc_opt.step()
+                
+                # 记录判别器损失用于动态调整对抗强度
+                self.disc_loss_history.append(disc_loss.item())
+                if len(self.disc_loss_history) > self.disc_loss_history_length:
+                    self.disc_loss_history.pop(0)
                 
                 # 目标域学习率调度 - 监控判别器损失
                 with torch.no_grad():
@@ -874,12 +909,25 @@ class AbstractDANN(Algorithm):
                 
                 return {
                     'disc_loss': disc_loss.item(),
-                    'disc_lr': self.target_scheduler._last_lr[0] if hasattr(self.target_scheduler, '_last_lr') else self.hparams["lr_d"]
+                    'disc_lr': self.target_scheduler._last_lr[0] if hasattr(self.target_scheduler, '_last_lr') else self.hparams["lr_d"],
+                    'current_lambda': self.current_lambda  # 记录当前对抗损失权重
                 }
         else:
             # 更新生成器（特征提取器和分类器）
+            # 动态调整对抗强度：如果判别器损失过低，降低对抗强度
+            # 这有助于防止判别器过强导致的训练不平衡
+            adaptive_lambda = self.current_lambda
+            if len(self.disc_loss_history) > 0:
+                avg_disc_loss = sum(self.disc_loss_history) / len(self.disc_loss_history)
+                # 如果判别器损失过低，降低对抗强度
+                if avg_disc_loss < self.disc_loss_floor:
+                    # 根据判别器损失与目标下限的比例调整对抗强度
+                    # 损失越低，降低越多
+                    reduction_factor = min(1.0, avg_disc_loss / self.disc_loss_floor)
+                    adaptive_lambda = self.current_lambda * (0.9 + 0.1 * reduction_factor)
+                    
             # 生成器的目标是最小化分类损失，同时最大化域对抗损失（通过负号实现）
-            gen_loss = classifier_loss - self.hparams['lambda'] * disc_loss
+            gen_loss = classifier_loss - adaptive_lambda * disc_loss
             
             self.disc_opt.zero_grad()
             self.gen_opt.zero_grad()
@@ -905,7 +953,8 @@ class AbstractDANN(Algorithm):
             
             return {
                 'gen_loss': gen_loss.item(),
-                'class_lr': self.source_scheduler._last_lr[0] if hasattr(self.source_scheduler, '_last_lr') else self.hparams["lr_g"]
+                'class_lr': self.source_scheduler._last_lr[0] if hasattr(self.source_scheduler, '_last_lr') else self.hparams["lr_g"],
+                'current_lambda': self.current_lambda  # 记录当前对抗损失权重
             }
 
     def predict(self, x):

@@ -271,9 +271,6 @@ if __name__ == "__main__":
             return
         save_dict = {
             "args": vars(args),
-            "model_input_shape": dataset.input_shape,
-            "model_num_classes": dataset.num_classes,
-            "model_num_domains": len(dataset) - len(args.target_env),
             "model_hparams": hparams,
             "model_dict": algorithm.state_dict()
         }
@@ -323,8 +320,8 @@ if __name__ == "__main__":
                 if '_out' in name or '_uda' in name:
                     acc = misc.accuracy(algorithm, loader, weights, device)
                     results[name+'_acc'] = acc
-                    # f1 = misc.f1_score_metric(algorithm, loader, weights, device)
-                    # results[name+'_f1'] = f1
+                    f1 = misc.f1_score_metric(algorithm, loader, weights, device)
+                    results[name+'_f1'] = f1
 
             # 记录内存使用情况
             results['mem_gb'] = torch.cuda.max_memory_allocated() / (1024.*1024.*1024.)

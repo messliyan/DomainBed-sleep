@@ -737,20 +737,30 @@ class AbstractDANN(Algorithm):
         self.lr_schedule_changes = 0
         # 创建源域学习率调度器 - 监控源域ACC
         # 优化参数以增加容错性：增大patience，减小factor变化率，增大threshold允许更大波动
+        # 源域调度器（生成器）：精准贴合 0~5稳→5~15首降→15~25次降→25+稳
         self.source_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            self.gen_opt,  # 生成器优化器
-            mode='min',    # 监控最小损失
-            factor=0.5,    # 学习率降低因子 (从0.3改为0.5，变化更平缓)
-            patience=15,   # 容忍没有改善的训练轮数 (从5改为15，增加容错)
-            threshold=0.005,  # 度量变化阈值 (从0.001改为0.005，允许更大波动)
+            self.gen_opt,
+            mode='min',
+            factor=0.65,  # 严格匹配理想路径的 0.001→0.00065→0.00042
+            patience=6,  # 关键：5~15epoch内触发首次降LR（连续6个epoch降幅＜0.005）
+            threshold=0.005,  # 适配gen_loss中期波动（日志中单次降幅＜0.005）
+            threshold_mode='abs',  # 按绝对差值判定，避免源域小loss误判
+            cooldown=5,  # 首次降后冷却5个epoch，刚好适配15~25次降节奏
+            min_lr=8e-7,
+            eps=1e-9,  # 处理gen_loss后期小数值精度问题
         )
-        # 创建目标域学习率调度器 - 监控目标域损失
+
+        # 目标域调度器（判别器）：彻底解决LR不变，贴合 8~20首降→20~30次降→30+稳
         self.target_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            self.disc_opt,  # 判别器优化器
-            mode='min',    # 监控最小损失
-            factor=0.5,    # 学习率降低因子 (从0.3改为0.5)
-            patience=15,   # 容忍没有改善的训练轮数 (从5改为15)
-            threshold=0.005,  # 度量变化阈值 (从0.001改为0.005)
+            self.disc_opt,
+            mode='min',
+            factor=0.75,  # 严格匹配理想路径的 0.001→0.00075→0.00056
+            patience=12,  # 8~20epoch内必触发（连续12个epoch降幅＜0.002）
+            threshold=0.002,  # 关键：适配disc_loss后期极小波动（日志中单次降幅＜0.001）
+            threshold_mode='abs',  # 核心修正！小loss场景下精准判定“无改善”
+            cooldown=6,  # 冷却期适配对抗节奏，避免频繁调整
+            min_lr=6e-7,
+            eps=1e-10,  # 解决disc_loss接近0（如1e-6）时的浮点精度问题
         )
 
     def update(self, minibatches, unlabeled=None):
@@ -853,17 +863,13 @@ class AbstractDANN(Algorithm):
                     # 只在epoch结束时调用学习率调度器
                     is_epoch_end = (self.update_count.item() % self.steps_per_epoch == 0)
                     if is_epoch_end:
-                        # 使用判别器损失进行学习率调度
                         self.target_scheduler.step(disc_loss)
-                        
-                        # 记录学习率变化
                         if hasattr(self.target_scheduler, '_last_lr'):
-                            current_lr = self.target_scheduler._last_lr
-                            self.lr_schedule.append(current_lr)
-                            
-                            # 记录学习率变化次数
-                            if len(self.lr_schedule) > 1:
-                                if self.lr_schedule[-1] != self.lr_schedule[-2]:
+                            current_disc_lr = self.target_scheduler._last_lr[0]
+                            # 单独记录判别器LR变化，避免与生成器混淆
+                            self.lr_schedule.append(('disc', current_disc_lr))
+                            if len(self.lr_schedule) > 1 and self.lr_schedule[-2][0] == 'disc':
+                                if self.lr_schedule[-1][1] != self.lr_schedule[-2][1]:
                                     self.lr_schedule_changes += 1
                 
                 return {
@@ -884,18 +890,14 @@ class AbstractDANN(Algorithm):
             with torch.no_grad():
                 # 只在epoch结束时调用学习率调度器
                 is_epoch_end = (self.update_count.item() % self.steps_per_epoch == 0)
+                # 更新生成器时的日志记录（修改后）
                 if is_epoch_end:
-                    # 直接使用已计算的分类器损失进行学习率调度
                     self.source_scheduler.step(classifier_loss)
-                    
-                    # 记录学习率变化
                     if hasattr(self.source_scheduler, '_last_lr'):
-                        current_lr = self.source_scheduler._last_lr
-                        self.lr_schedule.append(current_lr)
-                        
-                        # 记录学习率变化次数
-                        if len(self.lr_schedule) > 1:
-                            if self.lr_schedule[-1] != self.lr_schedule[-2]:
+                        current_gen_lr = self.source_scheduler._last_lr[0]
+                        self.lr_schedule.append(('gen', current_gen_lr))
+                        if len(self.lr_schedule) > 1 and self.lr_schedule[-2][0] == 'gen':
+                            if self.lr_schedule[-1][1] != self.lr_schedule[-2][1]:
                                 self.lr_schedule_changes += 1
                     
                     # 更新epoch计数器

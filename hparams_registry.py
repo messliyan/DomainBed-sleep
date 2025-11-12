@@ -90,16 +90,16 @@ def _hparams(algorithm, dataset, random_seed):
         _hparam('scheduler_step_interval', 150, lambda r: int(10 ** r.uniform(1, 3)))  # 调度器调用间隔步数
         _hparam('source_scheduler_patience', 10, lambda r: int(r.choice([5, 10, 15])))  # 源域调度器耐心值
         _hparam('source_scheduler_factor', 0.5, lambda r: r.choice([0.3, 0.5, 0.7]))  # 源域调度器学习率衰减因子
-        _hparam('target_scheduler_patience', 1, lambda r: int(r.choice([1, 2, 3])))  # 目标域调度器耐心值
+        _hparam('target_scheduler_patience', 2, lambda r: int(r.choice([1, 2, 3])))  # 目标域调度器耐心值
         _hparam('target_scheduler_factor', 0.2, lambda r: r.choice([0.1, 0.2, 0.3]))  # 目标域调度器学习率衰减因子
         _hparam('min_lr', 1e-6, lambda r: 10 ** r.uniform(-7, -5))  # 最低学习率限制
         
-        # DANN特定参数
+        # DANN特定参0数
         _hparam('max_lambda', 0.3, lambda r: r.uniform(0.1, 0.5))  # 最大对抗强度权重
-        _hparam('disc_loss_floor', 0.5, lambda r: r.uniform(0.3, 0.7))  # 判别器损失下限
+        _hparam('disc_loss_floor', 0.7, lambda r: r.uniform(0.3, 0.7))  # 判别器损失下限
         _hparam('disc_loss_critical_threshold', 0.1, lambda r: r.uniform(0.05, 0.2))  # 判别器损失临界阈值
         _hparam('disc_loss_history_length', 150, lambda r: int(10 ** r.uniform(1, 3)))  # 判别器损失历史长度
-        _hparam('disc_grad_clip', 1.5, lambda r: r.uniform(0.5, 2.0))  # 判别器梯度裁剪值
+        _hparam('disc_grad_clip', 1.0, lambda r: r.uniform(0.5, 2.0))  # 判别器梯度裁剪值
         
         _hparam('beta1', 0.5, lambda r: r.choice([0.5]))
         _hparam('grad_penalty', 3.0, lambda r: 10**r.uniform(-2, 2))  # 梯度惩罚权重

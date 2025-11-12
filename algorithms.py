@@ -270,9 +270,7 @@ class ERMPlusPlus(Algorithm, ErmPlusPlusMovingAvg):
                 foreach=False
             )
         
-        # 初始化学习率调度相关变量
-        self.lr_schedule = []
-        self.lr_schedule_changes = 0
+      
         # 创建学习率调度器
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min', patience=1)
         # 初始化移动平均
@@ -680,7 +678,7 @@ class AbstractDANN(Algorithm):
     实现了域对抗训练的核心逻辑，支持有监督的源域训练和无监督的目标域适应。
     """
     def __init__(self, input_shape, num_classes, num_domains, 
-                 hparams, conditional, class_balance):
+                 hparams, conditional):
         """初始化DANN算法
         
         Args:
@@ -689,18 +687,15 @@ class AbstractDANN(Algorithm):
             num_domains: 域数量
             hparams: 超参数字典
             conditional: 是否使用条件对抗
-            class_balance: 是否使用类别平衡
         """
         super(AbstractDANN, self).__init__(input_shape, num_classes, num_domains, hparams)
 
         self.register_buffer('update_count', torch.tensor([0]))
         self.conditional = conditional
-        self.class_balance = class_balance
         self.grl = networks.GradientReversalLayer.apply
         
-        # 添加epoch计数器和steps_per_epoch信息
-        self.register_buffer('current_epoch', torch.tensor([0]))
-        self.steps_per_epoch = hparams['steps_per_epoch']  # 默认值100
+        # 调度器调用间隔（step）
+        self.scheduler_step_interval = hparams.get('scheduler_step_interval', 100)  # 每100步调用一次调度器
 
         # 创建网络组件
         self.featurizer = networks.Featurizer(input_shape, self.hparams)
@@ -721,43 +716,44 @@ class AbstractDANN(Algorithm):
         self.disc_opt = torch.optim.AdamW(
             (list(self.discriminator.parameters()) +
                 list(self.class_embeddings.parameters())),
-            lr=self.hparams["lr_d"])  # 使用固定默认值
+            lr=self.hparams["lr_d"],
+            betas=(self.hparams['beta1'], 0.9)
+        )  # 使用固定默认值
 
         self.gen_opt = torch.optim.AdamW(
             (list(self.featurizer.parameters()) +
                 list(self.classifier.parameters())),
-            lr=self.hparams["lr_g"])  # 使用固定默认值
+            lr=self.hparams["lr_g"],
+            betas = (self.hparams['beta1'], 0.9)
+        )  # 使用固定默认值
         
-        # 初始化学习率调度相关变量
-        self.lr_schedule = []
-        self.lr_schedule_changes = 0
         # 创建源域学习率调度器 - 监控源域ACC
-        # 优化参数以增加容错性：增大patience，减小factor变化率，增大threshold允许更大波动
         # 源域调度器（生成器）：使用固定默认值
         self.source_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             self.gen_opt,
-            patience=3,
+            patience=10,
             factor=0.5
         )
 
         # 目标域调度器（判别器）：使用固定默认值
         self.target_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             self.disc_opt,
-            patience=3,
-            factor=0.5
+            patience=1,  # 缩短耐心值
+            factor=0.2,  # 增大降价幅度
+            min_lr=1e-6,  # 限制最低学习率
         )
         
-        self.lambda_start =  self.hparams['lambda_start'] # 初始对抗损失权重
+        self.lambda_start =  0.0 # 初始对抗损失权重
       
         self.lambda_end = self.hparams['lambda_end']    # 最终对抗损失权重，默认1.0
-        self.warmup_steps =self.hparams['warmup_steps']    # 延长预热步数至2000
-        self.current_lambda =  self.hparams['lambda_start'] 
+        self.warmup_steps =self.hparams['warmup_steps']    # 预热步数
+        self.current_lambda =  0.0
         self.total_steps =  self.hparams['n_steps'] # 总训练步数
 
         # 对抗强度的绝对上限，防止过强对抗
-        self.max_lambda =  2.0 # 对抗强度的最大允许值
+        self.max_lambda =  0.5 # 对抗强度的最大允许值
         # 判别器损失下限，用于动态调整对抗强度
-        self.disc_loss_floor =  0.1 # 判别器损失的理想下限值
+        self.disc_loss_floor =  0.5 # 判别器损失的理想下限值
         # 记录历史判别器损失
         self.disc_loss_history = []
         self.disc_loss_history_length = 150  # 保存最近10步的判别器损失
@@ -781,7 +777,7 @@ class AbstractDANN(Algorithm):
         device = "cuda" if minibatches[0][0].is_cuda else "cpu"
         self.update_count += 1
         
-        # 方案三：计算当前对抗损失权重（平衡版）
+        # 计算当前对抗损失权重（平衡版）
         current_step = self.update_count.item()
         if current_step <= self.warmup_steps:
             # 预热阶段：线性增加对抗损失权重
@@ -845,14 +841,8 @@ class AbstractDANN(Algorithm):
         # 计算判别器输出
         disc_out = self.discriminator(disc_input)
         
-        # 如果启用类别平衡，计算加权损失
-        if self.class_balance:
-            y_counts = F.one_hot(all_domain_labels).sum(dim=0)
-            weights = 1. / (y_counts[all_domain_labels] * y_counts.shape[0]).float()
-            disc_loss = F.cross_entropy(disc_out, all_domain_labels, reduction='none')
-            disc_loss = (weights * disc_loss).sum()
-        else:
-            disc_loss = F.cross_entropy(disc_out, all_domain_labels)
+        # 计算判别器损失（二元域适应场景不需要类别平衡）
+        disc_loss = F.cross_entropy(disc_out, all_domain_labels)
         
         # 计算梯度惩罚
         if self.hparams['grad_penalty'] > 0:
@@ -879,17 +869,10 @@ class AbstractDANN(Algorithm):
                 
                 # 目标域学习率调度 - 监控判别器损失
                 with torch.no_grad():
-                    # 只在epoch结束时调用学习率调度器
-                    is_epoch_end = (self.update_count.item() % self.steps_per_epoch == 0)
-                    if is_epoch_end:
-                        self.target_scheduler.step(disc_loss)
-                        if hasattr(self.target_scheduler, '_last_lr'):
-                            current_disc_lr = self.target_scheduler._last_lr[0]
-                            # 单独记录判别器LR变化，避免与生成器混淆
-                            self.lr_schedule.append(('disc', current_disc_lr))
-                            if len(self.lr_schedule) > 1 and self.lr_schedule[-2][0] == 'disc':
-                                if self.lr_schedule[-1][1] != self.lr_schedule[-2][1]:
-                                    self.lr_schedule_changes += 1
+                    # 按固定step间隔调用学习率调度器
+                    current_step = self.update_count.item()
+                    if current_step % self.scheduler_step_interval == 0:
+                        self.target_scheduler.step(disc_loss)              
                 
                 return {
                     'disc_loss': disc_loss.item(),
@@ -905,7 +888,6 @@ class AbstractDANN(Algorithm):
                 avg_disc_loss = sum(self.disc_loss_history) / len(self.disc_loss_history)
                 # 如果判别器损失过低，降低对抗强度
                 if avg_disc_loss < self.disc_loss_floor:
-                    # 根据判别器损失与目标下限的比例调整对抗强度
                     # 损失越低，降低越多
                     reduction_factor = min(1.0, avg_disc_loss / self.disc_loss_floor)
                     adaptive_lambda = self.current_lambda * (0.9 + 0.1 * reduction_factor)
@@ -920,20 +902,11 @@ class AbstractDANN(Algorithm):
             
             # 使用分类器损失进行学习率调度（比准确率计算更高效）
             with torch.no_grad():
-                # 只在epoch结束时调用学习率调度器
-                is_epoch_end = (self.update_count.item() % self.steps_per_epoch == 0)
-                # 更新生成器时的日志记录（修改后）
-                if is_epoch_end:
+                # 按固定step间隔调用学习率调度器
+                current_step = self.update_count.item()
+                if current_step % self.scheduler_step_interval == 0:
                     self.source_scheduler.step(classifier_loss)
-                    if hasattr(self.source_scheduler, '_last_lr'):
-                        current_gen_lr = self.source_scheduler._last_lr[0]
-                        self.lr_schedule.append(('gen', current_gen_lr))
-                        if len(self.lr_schedule) > 1 and self.lr_schedule[-2][0] == 'gen':
-                            if self.lr_schedule[-1][1] != self.lr_schedule[-2][1]:
-                                self.lr_schedule_changes += 1
-                    
-                    # 更新epoch计数器
-                    self.current_epoch += 1
+                
             
             return {
                 'gen_loss': gen_loss.item(),
@@ -964,7 +937,7 @@ class DANN(AbstractDANN):
             hparams: 超参数字典
         """
         super(DANN, self).__init__(input_shape, num_classes, num_domains,
-            hparams, conditional=False, class_balance=False)
+            hparams, conditional=False)
 
 class CDANN(AbstractDANN):
     """条件域对抗神经网络"""
@@ -978,7 +951,7 @@ class CDANN(AbstractDANN):
             hparams: 超参数字典
         """
         super(CDANN, self).__init__(input_shape, num_classes, num_domains,
-            hparams, conditional=True, class_balance=True)
+            hparams, conditional=True)
 
 class AbstractMMD(ERM):
     """基于MMD的域适应算法抽象基类"""

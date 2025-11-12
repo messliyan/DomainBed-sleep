@@ -102,15 +102,10 @@ if __name__ == "__main__":
         print('\t{}: {}'.format(k, v))
 
     # 设置超参数
-    if args.hparams_seed == 0:
-        # 使用默认超参数
-        hparams = hparams_registry.default_hparams(args.algorithm, args.dataset)
-    else:
-        # 使用随机超参数
-        hparams = hparams_registry.random_hparams(args.algorithm, args.dataset,
-            misc.seed_hash(args.hparams_seed, args.trial_seed))
+    # 只使用默认超参数，不再生成随机超参数
+    hparams = hparams_registry.default_hparams(args.algorithm, args.dataset)
+    # 如果用户通过命令行传入了超参数，则更新
     if args.hparams:
-        # 更新自定义超参数
         hparams.update(json.loads(args.hparams))
 
     # 打印超参数
@@ -169,14 +164,8 @@ if __name__ == "__main__":
                 int(len(in_)*args.uda_holdout_fraction),
                 misc.seed_hash(args.trial_seed, env_i))
 
-        # 如果需要类别平衡，为每个数据集创建权重
-        if hparams['class_balanced']:
-            in_weights = misc.make_weights_for_balanced_classes(in_)
-            out_weights = misc.make_weights_for_balanced_classes(out)
-            if uda is not None:
-                uda_weights = misc.make_weights_for_balanced_classes(uda)
-        else:
-            in_weights, out_weights, uda_weights = None, None, None
+        # 删除类别平衡支持，直接将所有权重设置为None
+        in_weights, out_weights, uda_weights = None, None, None
             
         # 将分割后的数据集和权重添加到对应的列表中
         in_splits.append((in_, in_weights))
@@ -208,7 +197,7 @@ if __name__ == "__main__":
     # 创建评估数据加载器
     eval_loaders = [FastDataLoader(
         dataset=env,
-        batch_size=128,
+        batch_size=hparams['batch_size'],
         num_workers=dataset.N_WORKERS)
         for env, _ in (in_splits + out_splits + uda_splits)]
 
@@ -221,11 +210,9 @@ if __name__ == "__main__":
     eval_loader_names += ['env{}_uda'.format(i)
         for i in range(len(uda_splits))]
 
-
     # 设置总训练步数和检查点频率
     n_steps = args.steps or dataset.N_STEPS
     checkpoint_freq = args.checkpoint_freq or dataset.CHECKPOINT_FREQ
-
 
     # 获取算法类并初始化模型
     algorithm_class = algorithms.get_algorithm_class(args.algorithm)
@@ -233,21 +220,9 @@ if __name__ == "__main__":
     # 将实际训练步数设置到算法的超参数中，确保max_steps与实际训练步数一致
     hparams['n_steps'] = n_steps
 
-    # 计算周期的训练步数（取所有域数据加载器中样本数的最小值）
-    # 在多环境训练中，一个"epoch"被重新定义为：完成足够多的迭代，使得最小的环境数据被理论上完整遍历一次（以batch_size为单位计算）。
-    steps_per_epoch = min([len(env) / hparams['batch_size'] for env, _ in in_splits])
-    # 将steps_per_epoch添加到hparams中，以便在算法中使用
-    hparams['steps_per_epoch'] = steps_per_epoch
 
-     # 初始化算法模型，参数包括输入形状、类别数、域数）和超参数
-    # 使用修改后的hparams创建算法实例，包含steps_per_epoch信息
     algorithm = algorithm_class(dataset.input_shape, dataset.num_classes, len(dataset), hparams)
     
-    
-    
-    # 如果有预训练模型，加载其状态 用于迁移学习
-    if algorithm_dict is not None:
-        algorithm.load_state_dict(algorithm_dict)
 
     # 将模型移动到指定设备
     algorithm.to(device)
@@ -259,9 +234,8 @@ if __name__ == "__main__":
     # 用于存储每个检查点的指标值
     checkpoint_vals = collections.defaultdict(lambda: [])
 
+    steps_per_epoch = min([len(env) / hparams['batch_size'] for env, _ in in_splits])
 
-
-    
     # 定义保存检查点的函数
     def save_checkpoint(filename):
         """
@@ -315,6 +289,7 @@ if __name__ == "__main__":
             for key, val in checkpoint_vals.items():
                 results[key] = np.mean(val)
 
+            # 在所有数据集上评估模型
             # 在所有数据集上评估模型
             evals = zip(eval_loader_names, eval_loaders, eval_weights)
             for name, loader, weights in evals:

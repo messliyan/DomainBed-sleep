@@ -6,6 +6,10 @@
 2. 随机超参数采样策略
 3. 算法特定和数据集特定的超参数配置
 
+现在的工作流程是：
+- train.py 只使用默认超参数或用户传入的超参数
+- sweep.py 负责生成随机超参数并传递给train.py
+
 超参数通过全局注册表进行管理，每个算法和数据集组合都有其对应的
 默认值和随机采样函数。这使得实验的配置和复现变得更加容易。
 """
@@ -64,27 +68,32 @@ def _hparams(algorithm, dataset, random_seed):
         hparams[name] = (default_val, random_val_fn(random_state))
 
     # 无条件超参数定义 - 适用于所有算法和数据集
-    # 分类器相关
-    _hparam('class_balanced', False, lambda r: False)  # 是否使用类别平衡
+    
     # TODO: nonlinear classifiers disabled
     _hparam('nonlinear_classifier', False,
             lambda r: bool(r.choice([False, False])))
 
     # 算法特定超参数定义
     # 每个代码块对应一种算法的超参数
-    _hparam('lr_g', 1e-4, lambda r: 10 ** r.uniform(-5, -3.5))
+    _hparam('lr_g', 5e-4, lambda r: 10 ** r.uniform(-5, -3.5))
     _hparam('lr_d', 1e-4, lambda r: 10 ** r.uniform(-5, -3.5))
 
     # 1. 域对抗训练算法
     if algorithm in ['DANN', 'CDANN']:  # 域对抗神经网络及其变体
         # 对抗训练基础参数
-        _hparam('d_steps_per_g_step', 0.5, lambda r: int(2**r.uniform(0, 1)))  # 每个生成器步对应的判别器步数
+        #  “每更 1 次生成器，更几次判别器”（默认 0.5）
+        _hparam('d_steps_per_g_step', 0.1, lambda r: round(r.uniform(0.2, 0.5), 1))  # 0-1之间的一位小数
+        _hparam('warmup_steps', 5000, lambda r: int(r.choice([2000, 3000, 4000, 5000])))  # 1000-5000以1000为间隔
+        _hparam('lambda_end', 0.3, lambda r: round(r.uniform(0.5, 1.0), 1))  # 0.5-2之间的一位小数
+        
+        # 学习率调度器参数
+        _hparam('scheduler_step_interval', 100, lambda r: int(10 ** r.uniform(1, 3)))  # 调度器调用间隔步数
+
+
+
+        _hparam('beta1', 0.5, lambda r: r.choice([0.5]))
         _hparam('grad_penalty', 1.0, lambda r: 10**r.uniform(-2, 2))  # 梯度惩罚权重
         
-        # 自适应对抗强度参数
-        _hparam('warmup_steps', 2000, lambda r: int(10 ** r.uniform(2.5, 4)))  # 预热步数
-        _hparam('lambda_start', 0.0, lambda r: r.uniform(0.0, 0.5))  # 初始对抗损失权重
-        _hparam('lambda_end', 2.0, lambda r: 10 ** r.uniform(-1, 2))  # 最终对抗损失权重
 
         # 判别器网络结构参数
         _hparam('mlp_width', 128, lambda r: int(2 ** r.uniform(5, 9)))  # 判别器MLP宽度
@@ -152,7 +161,7 @@ def _hparams(algorithm, dataset, random_seed):
         # 增加对抗损失权重，增强生成器
         _hparam('disc_lambda', 1.0, lambda r: r.choice([0.75, 1.0, 1.5]))
         _hparam('rmxd_lambda', 1.0, lambda r: r.choice([1.0]))
-        # 减少判别器更新频率
+        #  “每更 1 次生成器，更几次判别器”（默认 1:1）
         _hparam('d_steps_per_g_step', 1, lambda r: r.choice([1, 2]))
         _hparam('beta1', 0.5, lambda r: r.choice([0.5]))
         # 减小判别器网络宽度
@@ -187,6 +196,8 @@ def _hparams(algorithm, dataset, random_seed):
 def default_hparams(algorithm, dataset):
     """获取指定算法和数据集的默认超参数
     
+    这个函数现在只被train.py调用，用于获取默认超参数。
+    
     Args:
         algorithm: 算法名称
         dataset: 数据集名称
@@ -201,6 +212,7 @@ def default_hparams(algorithm, dataset):
 def random_hparams(algorithm, dataset, seed):
     """获取指定算法和数据集的随机超参数
     
+    这个函数现在只被sweep.py调用，用于生成随机超参数，然后传递给train.py。
     基于给定的随机种子生成一组随机超参数，确保可复现性。
     
     Args:

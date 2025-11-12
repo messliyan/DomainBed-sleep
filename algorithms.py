@@ -728,20 +728,23 @@ class AbstractDANN(Algorithm):
         )  # 使用固定默认值
         
         # 创建源域学习率调度器 - 监控源域ACC
-        # 源域调度器（生成器）：使用固定默认值
         self.source_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             self.gen_opt,
-            patience=10,
-            factor=0.5
+            patience=self.hparams.get('source_scheduler_patience', 10),
+            factor=self.hparams.get('source_scheduler_factor', 0.5),
+            min_lr=self.hparams.get('min_lr', 1e-6),  # 限制最低学习率
         )
 
-        # 目标域调度器（判别器）：使用固定默认值
+        # 目标域调度器（判别器）
         self.target_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             self.disc_opt,
-            patience=1,  # 缩短耐心值
-            factor=0.2,  # 增大降价幅度
-            min_lr=1e-6,  # 限制最低学习率
+            patience=self.hparams.get('target_scheduler_patience', 1),  # 缩短耐心值
+            factor=self.hparams.get('target_scheduler_factor', 0.2),  # 增大降价幅度
+            min_lr=self.hparams.get('min_lr', 1e-6),  # 限制最低学习率
         )
+        
+        # 初始化调度器间隔参数
+        self.scheduler_step_interval = self.hparams.get('scheduler_step_interval', 150)
         
         self.lambda_start =  0.0 # 初始对抗损失权重
       
@@ -751,12 +754,16 @@ class AbstractDANN(Algorithm):
         self.total_steps =  self.hparams['n_steps'] # 总训练步数
 
         # 对抗强度的绝对上限，防止过强对抗
-        self.max_lambda =  0.5 # 对抗强度的最大允许值
+        self.max_lambda = self.hparams.get('max_lambda', 0.3) # 对抗强度的最大允许值
         # 判别器损失下限，用于动态调整对抗强度
-        self.disc_loss_floor =  0.5 # 判别器损失的理想下限值
+        self.disc_loss_floor = self.hparams.get('disc_loss_floor', 0.7) # 判别器损失的理想下限值
+        # 判别器损失严重过低阈值
+        self.disc_loss_critical_threshold = self.hparams.get('disc_loss_critical_threshold', 0.1)
         # 记录历史判别器损失
         self.disc_loss_history = []
-        self.disc_loss_history_length = 150  # 保存最近10步的判别器损失
+        self.disc_loss_history_length = self.hparams.get('disc_loss_history_length', 150)  # 保存最近的判别器损失
+        # 保存原始判别器学习率，用于动态调整
+        self.original_disc_lr = None
 
     def update(self, minibatches, unlabeled=None):
         """执行一步更新
@@ -855,12 +862,41 @@ class AbstractDANN(Algorithm):
         # 交替更新判别器和生成器
         d_steps_per_g = self.hparams['d_steps_per_g_step'] # 使用默认值1，确保配置不存在时仍能正常运行
         if (self.update_count.item() % (1 + d_steps_per_g) < d_steps_per_g):
-            # 更新判别器
-                self.disc_opt.zero_grad()
-                disc_loss.backward()
-                # 添加梯度裁剪，防止判别器更新过大
-                torch.nn.utils.clip_grad_norm_(self.discriminator.parameters(), max_norm=1.0)
-                self.disc_opt.step()
+            # 更新判别器 - 添加低损失保护机制
+                should_update_discriminator = True
+                
+                # 初始化原始学习率（首次运行时）
+                if self.original_disc_lr is None:
+                    self.original_disc_lr = self.disc_opt.param_groups[0]['lr']
+                
+                # 检查判别器损失
+                current_disc_loss = disc_loss.item()
+                
+                if current_disc_loss < self.disc_loss_critical_threshold:
+                    # 当判别器损失过低时，暂停更新判别器并降低学习率
+                    should_update_discriminator = False
+                    # 降低判别器学习率
+                    for param_group in self.disc_opt.param_groups:
+                        param_group['lr'] = self.original_disc_lr * 0.1  # 降低到原始学习率的10%
+                elif current_disc_loss < self.disc_loss_floor and current_disc_loss >= self.disc_loss_critical_threshold:
+                    # 当判别器损失较低但未达到临界值时，降低学习率但不暂停更新
+                    for param_group in self.disc_opt.param_groups:
+                        # 动态调整学习率，损失越低，学习率越低
+                        lr_factor = max(0.2, current_disc_loss / self.disc_loss_floor)
+                        param_group['lr'] = self.original_disc_lr * lr_factor
+                else:
+                    # 当判别器损失恢复正常时，恢复原始学习率
+                    for param_group in self.disc_opt.param_groups:
+                        if param_group['lr'] < self.original_disc_lr:
+                            # 渐进式恢复学习率，避免突变
+                            param_group['lr'] = min(self.original_disc_lr, param_group['lr'] * 1.2)
+                
+                if should_update_discriminator:
+                    self.disc_opt.zero_grad()
+                    disc_loss.backward()
+                    # 添加梯度裁剪，防止判别器更新过大
+                    torch.nn.utils.clip_grad_norm_(self.discriminator.parameters(), max_norm=self.hparams.get('disc_grad_clip', 1.5))
+                    self.disc_opt.step()
                 
                 # 记录判别器损失用于动态调整对抗强度
                 self.disc_loss_history.append(disc_loss.item())

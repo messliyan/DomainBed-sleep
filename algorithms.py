@@ -705,10 +705,8 @@ class AbstractDANN(Algorithm):
             self.hparams['nonlinear_classifier'])
 
         # 域分类器
-        self.discriminator = networks.MLP(
-            self.featurizer.n_outputs,
-            num_domains,  
-            self.hparams)
+        self.discriminator = networks.DomainDiscriminator(
+            self.featurizer.n_outputs)
         self.class_embeddings = nn.Embedding(num_classes,
             self.featurizer.n_outputs)
 
@@ -849,13 +847,27 @@ class AbstractDANN(Algorithm):
         disc_out = self.discriminator(disc_input)
         
         # 计算判别器损失（二元域适应场景不需要类别平衡）
-        disc_loss = F.cross_entropy(disc_out, all_domain_labels)
+        # DomainDiscriminator输出的是logits，使用二元交叉熵
+        if num_domains == 2:
+            # 二元域分类
+            all_domain_labels = all_domain_labels.float()  # BCEWithLogitsLoss需要float类型
+            disc_loss = F.binary_cross_entropy_with_logits(disc_out.squeeze(), all_domain_labels)
+        else:
+            # 多元域分类（保留原逻辑）
+            disc_loss = F.cross_entropy(disc_out, all_domain_labels)
         
         # 计算梯度惩罚
         if self.hparams['grad_penalty'] > 0:
-            input_grad = autograd.grad(
-                F.cross_entropy(disc_out, all_domain_labels, reduction='sum'),
-                [disc_input], create_graph=True)[0]
+            if num_domains == 2:
+                # 二元域分类
+                input_grad = autograd.grad(
+                    F.binary_cross_entropy_with_logits(disc_out.squeeze(), all_domain_labels, reduction='sum'),
+                    [disc_input], create_graph=True)[0]
+            else:
+                # 多元域分类（保留原逻辑）
+                input_grad = autograd.grad(
+                    F.cross_entropy(disc_out, all_domain_labels, reduction='sum'),
+                    [disc_input], create_graph=True)[0]
             grad_penalty = (input_grad**2).sum(dim=1).mean(dim=0)
             disc_loss += self.hparams['grad_penalty'] * grad_penalty
         

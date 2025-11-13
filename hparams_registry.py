@@ -86,6 +86,10 @@ def _hparams(algorithm, dataset, random_seed):
         _hparam('warmup_steps', 4000, lambda r: int(r.choice([2000, 3000, 4000, 5000])))  # 1000-5000以1000为间隔
         _hparam('lambda_end', 0.4, lambda r: round(r.uniform(0.5, 1.0), 1))  # 0.5-2之间的一位小数
         
+        # 双分支模型参数
+        _hparam('use_dual_branch', True, lambda r: r.choice([True, False]))  # 是否使用双分支模型
+        _hparam('dual_branch_dim', 30, lambda r: int(r.choice([15, 30, 60])))  # 双分支模型维度
+        
         # 学习率调度器参数
         _hparam('scheduler_step_interval', 150, lambda r: int(10 ** r.uniform(1, 3)))  # 调度器调用间隔步数
         _hparam('source_scheduler_patience', 10, lambda r: int(r.choice([5, 10, 15])))  # 源域调度器耐心值

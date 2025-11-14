@@ -55,3 +55,71 @@ Traceback (most recent call last):
   File "D:\PycharmProjects\DomainBed-sleep\scripts\train.py", line 134, in <module>
     raise NotImplementedError
 NotImplementedError
+Environment:
+	Python: 3.13.5
+	PyTorch: 2.9.0+cpu
+	CUDA: None
+	CUDNN: None
+	NumPy: 2.3.4
+Args:
+	algorithm: DANN
+	checkpoint_freq: None
+	data_dir: D:\PycharmProjects\DomainBed-sleep\eeg_data
+	dataset: SleepDataset
+	holdout_fraction: 0.2
+	hparams: None
+	hparams_seed: 0
+	output_dir: results/dann_test_env0
+	save_model_every_checkpoint: False
+	seed: 34
+	skip_model_save: False
+	steps: 100
+	target_env: [0]
+	task: domain_adaptation
+	trial_seed: 34
+	uda_holdout_fraction: 0.8
+HParams:
+	batch_size: 128
+	beta1: 0.5
+	d_steps_per_g_step: 0.1
+	disc_grad_clip: 1.0
+	disc_loss_critical_threshold: 0.1
+	disc_loss_floor: 0.7
+	disc_loss_history_length: 150
+	dual_branch_dim: 30
+	grad_penalty: 3.0
+	lambda_end: 0.4
+	lr: 0.001
+	lr_d: 0.0001
+	lr_g: 0.001
+	max_lambda: 0.3
+	min_lr: 1e-06
+	mlp_depth: 2
+	mlp_dropout: 0.3
+	mlp_width: 128
+	nonlinear_classifier: False
+	scheduler_step_interval: 150
+	source_scheduler_factor: 0.5
+	source_scheduler_patience: 10
+	target_scheduler_factor: 0.2
+	target_scheduler_patience: 2
+	use_dual_branch: True
+	warmup_steps: 4000
+	weight_decay: 0.01
+使用预定义的环境列表: ['sleep-edf-78', 'shhs']
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "D:\PycharmProjects\DomainBed-sleep\scripts\train.py", line 131, in <module>
+    dataset = vars(datasets)[args.dataset](args.data_dir,
+        args.target_env, hparams)
+  File "D:\PycharmProjects\DomainBed-sleep\datasets.py", line 304, in __init__
+    super().__init__(self.dir, test_envs, hparams)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\PycharmProjects\DomainBed-sleep\datasets.py", line 181, in __init__
+    env_data, env_labels = self._load_environment_data(env_path)
+                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "D:\PycharmProjects\DomainBed-sleep\datasets.py", line 279, in _load_environment_data
+    return np.concatenate(all_x, axis=0), np.concatenate(all_y, axis=0)
+           ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+KeyboardInterrupt

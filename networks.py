@@ -68,7 +68,7 @@ class MLP(nn.Module):
             for _ in range(hparams['mlp_depth']-2)])
         self.output = nn.Linear(hparams['mlp_width'], n_outputs)
         self.n_outputs = n_outputs
-        self.activation = nn.Identity() # for URM; does not affect other algorithms
+        self.activation = nn.Identity()
 
     def forward(self, x):
         x = self.input(x)
@@ -79,7 +79,7 @@ class MLP(nn.Module):
             x = self.dropout(x)
             x = F.relu(x)
         x = self.output(x)
-        x = self.activation(x) # for URM; does not affect other algorithms
+        x = self.activation(x)
         return x
 
 

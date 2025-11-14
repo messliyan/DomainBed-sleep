@@ -4,3 +4,57 @@ Traceback (most recent call last):
   File "D:\PycharmProjects\DomainBed-sleep\scripts\train.py", line 134, in <module>
     raise NotImplementedError
 NotImplementedError
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "D:\PycharmProjects\DomainBed-sleep\scripts\train.py", line 131, in <module>
+    dataset = vars(datasets)[args.dataset](args.data_dir,
+        args.target_env, hparams)
+  File "D:\PycharmProjects\DomainBed-sleep\datasets.py", line 304, in __init__
+    super().__init__(self.dir, test_envs, hparams)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\PycharmProjects\DomainBed-sleep\datasets.py", line 181, in __init__
+    env_data, env_labels = self._load_environment_data(env_path)
+                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "D:\PycharmProjects\DomainBed-sleep\datasets.py", line 279, in _load_environment_data
+    return np.concatenate(all_x, axis=0), np.concatenate(all_y, axis=0)
+           ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+KeyboardInterrupt
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "D:\PycharmProjects\DomainBed-sleep\scripts\train.py", line 131, in <module>
+    dataset = vars(datasets)[args.dataset](args.data_dir,
+        args.target_env, hparams)
+  File "D:\PycharmProjects\DomainBed-sleep\datasets.py", line 304, in __init__
+    super().__init__(self.dir, test_envs, hparams)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\PycharmProjects\DomainBed-sleep\datasets.py", line 181, in __init__
+    env_data, env_labels = self._load_environment_data(env_path)
+                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "D:\PycharmProjects\DomainBed-sleep\datasets.py", line 252, in _load_environment_data
+    x = data['x']
+        ~~~~^^^^^
+  File "C:\Users\chierduo\miniconda3\Lib\site-packages\numpy\lib\_npyio_impl.py", line 257, in __getitem__
+    return format.read_array(
+           ~~~~~~~~~~~~~~~~~^
+        bytes,
+        ^^^^^^
+    ...<2 lines>...
+        max_header_size=self.max_header_size
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\chierduo\miniconda3\Lib\site-packages\numpy\lib\_format_impl.py", line 869, in read_array
+    data = _read_bytes(fp, read_size, "array data")
+  File "C:\Users\chierduo\miniconda3\Lib\site-packages\numpy\lib\_format_impl.py", line 1013, in _read_bytes
+    r = fp.read(size - len(data))
+  File "C:\Users\chierduo\miniconda3\Lib\zipfile\__init__.py", line 1015, in read
+    data = self._read1(n)
+  File "C:\Users\chierduo\miniconda3\Lib\zipfile\__init__.py", line 1085, in _read1
+    data = self._read2(n)
+  File "C:\Users\chierduo\miniconda3\Lib\zipfile\__init__.py", line 1115, in _read2
+    data = self._fileobj.read(n)
+  File "C:\Users\chierduo\miniconda3\Lib\zipfile\__init__.py", line 834, in read
+    data = self._file.read(n)
+KeyboardInterrupt

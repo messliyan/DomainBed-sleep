@@ -83,7 +83,6 @@ class MLP(nn.Module):
         return x
 
 
-# -------------------------- 从a.py导入的核心网络组件 --------------------------
 class SELayer(nn.Module):  # 基础通道注意力
     def __init__(self, channel, reduction=16):
         super().__init__()

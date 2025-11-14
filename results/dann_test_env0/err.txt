@@ -1,0 +1,46 @@
+Traceback (most recent call last):
+  File "D:\PycharmProjects\DomainBed-sleep\scripts\train.py", line 109, in <module>
+    hparams.update(json.loads(args.hparams))
+                   ~~~~~~~~~~^^^^^^^^^^^^^^
+  File "C:\Users\chierduo\miniconda3\Lib\json\__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "C:\Users\chierduo\miniconda3\Lib\json\decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\chierduo\miniconda3\Lib\json\decoder.py", line 361, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ~~~~~~~~~~~~~~^^^^^^^^
+json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+Traceback (most recent call last):
+  File "D:\PycharmProjects\DomainBed-sleep\scripts\train.py", line 109, in <module>
+    hparams.update(json.loads(args.hparams))
+                   ~~~~~~~~~~^^^^^^^^^^^^^^
+  File "C:\Users\chierduo\miniconda3\Lib\json\__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "C:\Users\chierduo\miniconda3\Lib\json\decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\chierduo\miniconda3\Lib\json\decoder.py", line 361, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ~~~~~~~~~~~~~~^^^^^^^^
+json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+Traceback (most recent call last):
+  File "D:\PycharmProjects\DomainBed-sleep\scripts\train.py", line 134, in <module>
+    raise NotImplementedError
+NotImplementedError
+Traceback (most recent call last):
+  File "D:\PycharmProjects\DomainBed-sleep\scripts\train.py", line 131, in <module>
+    dataset = vars(datasets)[args.dataset](args.data_dir,
+        args.target_env, hparams)
+  File "D:\PycharmProjects\DomainBed-sleep\datasets.py", line 304, in __init__
+    super().__init__(self.dir, test_envs, hparams)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\PycharmProjects\DomainBed-sleep\datasets.py", line 181, in __init__
+    env_data, env_labels = self._load_environment_data(env_path)
+                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "D:\PycharmProjects\DomainBed-sleep\datasets.py", line 279, in _load_environment_data
+    return np.concatenate(all_x, axis=0), np.concatenate(all_y, axis=0)
+           ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+numpy._core._exceptions._ArrayMemoryError: Unable to allocate 285. MiB for an array with shape (24872, 3000, 1) and data type float32

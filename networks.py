@@ -191,11 +191,11 @@ class SparseSelfAttention(nn.Module):  # 稀疏自注意力（全局建模）
         v = v.view(B, self.heads, self.head_dim, T).transpose(2,3)
         
         # 稀疏掩码：局部窗口+随机采样
-        mask = torch.zeros(T, T, device=x.device)
+        mask = torch.zeros(T, T, device=x.device, dtype=torch.bool)
         for i in range(T):  # 局部窗口
-            mask[i, max(0, i-self.window_size//2):min(T, i+self.window_size//2+1)] = 1
+            mask[i, max(0, i-self.window_size//2):min(T, i+self.window_size//2+1)] = True
         mask = mask | (torch.rand(T, T, device=x.device) < self.sparse_rate)  # 随机采样
-        mask = mask.masked_fill(mask==0, -1e9)
+        mask = mask.masked_fill(mask==False, -1e9)
         
         # 注意力计算
         attn_scores = (q @ k.transpose(-2,-1)) / math.sqrt(self.head_dim)  # [B, heads, T, T]

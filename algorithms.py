@@ -848,7 +848,7 @@ class AbstractDANN(Algorithm):
         
         # 计算判别器损失（二元域适应场景不需要类别平衡）
         # DomainDiscriminator输出的是logits，使用二元交叉熵
-        if num_domains == 2:
+        if self.num_domains == 2:
             # 二元域分类
             all_domain_labels = all_domain_labels.float()  # BCEWithLogitsLoss需要float类型
             disc_loss = F.binary_cross_entropy_with_logits(disc_out.squeeze(), all_domain_labels)
@@ -858,7 +858,7 @@ class AbstractDANN(Algorithm):
         
         # 计算梯度惩罚
         if self.hparams['grad_penalty'] > 0:
-            if num_domains == 2:
+            if self.num_domains == 2:
                 # 二元域分类
                 input_grad = autograd.grad(
                     F.binary_cross_entropy_with_logits(disc_out.squeeze(), all_domain_labels, reduction='sum'),

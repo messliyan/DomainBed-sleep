@@ -36,7 +36,7 @@ if __name__ == "__main__":
 
     # 数据集相关参数
     parser.add_argument('--dataset', type=str, default="SleepDataset")  # 数据集名称
-    parser.add_argument('--algorithm', type=str, default="DANN")  # 使用的算法
+    parser.add_argument('--algorithm', type=str, default="CDANN")  # 使用的算法
     parser.add_argument('--task', type=str, default="domain_adaptation",  # 任务类型
         choices=["domain_generalization", "domain_adaptation"])
     

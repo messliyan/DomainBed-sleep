@@ -1,0 +1,548 @@
+Environment:
+	Python: 3.13.5
+	PyTorch: 2.9.0+cpu
+	CUDA: None
+	CUDNN: None
+	NumPy: 2.3.4
+Args:
+	algorithm: DANN
+	checkpoint_freq: None
+	data_dir: D:\PycharmProjects\DomainBed-sleep\eeg_data
+	dataset: Sleep
+	holdout_fraction: 0.2
+	hparams: {use_dual_branch:true,dual_branch_dim:30}
+	hparams_seed: 0
+	output_dir: results/dann_test_env0
+	save_model_every_checkpoint: False
+	seed: 34
+	skip_model_save: False
+	steps: None
+	target_env: [0]
+	task: domain_adaptation
+	trial_seed: 34
+	uda_holdout_fraction: 0.8
+Traceback (most recent call last):
+  File "D:\PycharmProjects\DomainBed-sleep\scripts\train.py", line 109, in <module>
+    hparams.update(json.loads(args.hparams))
+                   ~~~~~~~~~~^^^^^^^^^^^^^^
+  File "C:\Users\chierduo\miniconda3\Lib\json\__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "C:\Users\chierduo\miniconda3\Lib\json\decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\chierduo\miniconda3\Lib\json\decoder.py", line 361, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ~~~~~~~~~~~~~~^^^^^^^^
+json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+Environment:
+	Python: 3.13.5
+	PyTorch: 2.9.0+cpu
+	CUDA: None
+	CUDNN: None
+	NumPy: 2.3.4
+Args:
+	algorithm: DANN
+	checkpoint_freq: None
+	data_dir: D:\PycharmProjects\DomainBed-sleep\eeg_data
+	dataset: Sleep
+	holdout_fraction: 0.2
+	hparams: {use_dual_branch: true, dual_branch_dim: 30}
+	hparams_seed: 0
+	output_dir: results/dann_test_env0
+	save_model_every_checkpoint: False
+	seed: 34
+	skip_model_save: False
+	steps: None
+	target_env: [0]
+	task: domain_adaptation
+	trial_seed: 34
+	uda_holdout_fraction: 0.8
+Traceback (most recent call last):
+  File "D:\PycharmProjects\DomainBed-sleep\scripts\train.py", line 109, in <module>
+    hparams.update(json.loads(args.hparams))
+                   ~~~~~~~~~~^^^^^^^^^^^^^^
+  File "C:\Users\chierduo\miniconda3\Lib\json\__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "C:\Users\chierduo\miniconda3\Lib\json\decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\chierduo\miniconda3\Lib\json\decoder.py", line 361, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ~~~~~~~~~~~~~~^^^^^^^^
+json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+Environment:
+	Python: 3.13.5
+	PyTorch: 2.9.0+cpu
+	CUDA: None
+	CUDNN: None
+	NumPy: 2.3.4
+Args:
+	algorithm: DANN
+	checkpoint_freq: None
+	data_dir: D:\PycharmProjects\DomainBed-sleep\eeg_data
+	dataset: Sleep
+	holdout_fraction: 0.2
+	hparams: None
+	hparams_seed: 0
+	output_dir: results/dann_test_env0
+	save_model_every_checkpoint: False
+	seed: 34
+	skip_model_save: False
+	steps: None
+	target_env: [0]
+	task: domain_adaptation
+	trial_seed: 34
+	uda_holdout_fraction: 0.8
+HParams:
+	batch_size: 128
+	beta1: 0.5
+	d_steps_per_g_step: 0.1
+	disc_grad_clip: 1.0
+	disc_loss_critical_threshold: 0.1
+	disc_loss_floor: 0.7
+	disc_loss_history_length: 150
+	dual_branch_dim: 30
+	grad_penalty: 3.0
+	lambda_end: 0.4
+	lr: 0.001
+	lr_d: 0.0001
+	lr_g: 0.001
+	max_lambda: 0.3
+	min_lr: 1e-06
+	mlp_depth: 2
+	mlp_dropout: 0.3
+	mlp_width: 128
+	nonlinear_classifier: False
+	scheduler_step_interval: 150
+	source_scheduler_factor: 0.5
+	source_scheduler_patience: 10
+	target_scheduler_factor: 0.2
+	target_scheduler_patience: 2
+	use_dual_branch: True
+	warmup_steps: 4000
+	weight_decay: 0.01
+Traceback (most recent call last):
+  File "D:\PycharmProjects\DomainBed-sleep\scripts\train.py", line 134, in <module>
+    raise NotImplementedError
+NotImplementedError
+Environment:
+	Python: 3.13.5
+	PyTorch: 2.9.0+cpu
+	CUDA: None
+	CUDNN: None
+	NumPy: 2.3.4
+Args:
+	algorithm: DANN
+	checkpoint_freq: None
+	data_dir: D:\PycharmProjects\DomainBed-sleep\eeg_data
+	dataset: SleepDataset
+	holdout_fraction: 0.2
+	hparams: None
+	hparams_seed: 0
+	output_dir: results/dann_test_env0
+	save_model_every_checkpoint: False
+	seed: 34
+	skip_model_save: False
+	steps: None
+	target_env: [0]
+	task: domain_adaptation
+	trial_seed: 34
+	uda_holdout_fraction: 0.8
+HParams:
+	batch_size: 128
+	beta1: 0.5
+	d_steps_per_g_step: 0.1
+	disc_grad_clip: 1.0
+	disc_loss_critical_threshold: 0.1
+	disc_loss_floor: 0.7
+	disc_loss_history_length: 150
+	dual_branch_dim: 30
+	grad_penalty: 3.0
+	lambda_end: 0.4
+	lr: 0.001
+	lr_d: 0.0001
+	lr_g: 0.001
+	max_lambda: 0.3
+	min_lr: 1e-06
+	mlp_depth: 2
+	mlp_dropout: 0.3
+	mlp_width: 128
+	nonlinear_classifier: False
+	scheduler_step_interval: 150
+	source_scheduler_factor: 0.5
+	source_scheduler_patience: 10
+	target_scheduler_factor: 0.2
+	target_scheduler_patience: 2
+	use_dual_branch: True
+	warmup_steps: 4000
+	weight_decay: 0.01
+使用预定义的环境列表: ['sleep-edf-78', 'shhs']
+成功加载环境 sleep-edf-78: 195479 个样本, 输入形状: (1, 3000)
+成功加载环境 shhs: 324854 个样本, 输入形状: (1, 3750)
+
+数据集环境信息:
+目标域 (env_0): ['sleep-edf-78']
+源域 (env_1): ['shhs']
+Environment:
+	Python: 3.13.5
+	PyTorch: 2.9.0+cpu
+	CUDA: None
+	CUDNN: None
+	NumPy: 2.3.4
+Args:
+	algorithm: DANN
+	checkpoint_freq: None
+	data_dir: D:\PycharmProjects\DomainBed-sleep\eeg_data
+	dataset: SleepDataset
+	holdout_fraction: 0.2
+	hparams: None
+	hparams_seed: 0
+	output_dir: results/dann_test_env0
+	save_model_every_checkpoint: False
+	seed: 34
+	skip_model_save: False
+	steps: None
+	target_env: [0]
+	task: domain_adaptation
+	trial_seed: 34
+	uda_holdout_fraction: 0.8
+HParams:
+	batch_size: 128
+	beta1: 0.5
+	d_steps_per_g_step: 0.1
+	disc_grad_clip: 1.0
+	disc_loss_critical_threshold: 0.1
+	disc_loss_floor: 0.7
+	disc_loss_history_length: 150
+	dual_branch_dim: 30
+	grad_penalty: 3.0
+	lambda_end: 0.4
+	lr: 0.001
+	lr_d: 0.0001
+	lr_g: 0.001
+	max_lambda: 0.3
+	min_lr: 1e-06
+	mlp_depth: 2
+	mlp_dropout: 0.3
+	mlp_width: 128
+	nonlinear_classifier: False
+	scheduler_step_interval: 150
+	source_scheduler_factor: 0.5
+	source_scheduler_patience: 10
+	target_scheduler_factor: 0.2
+	target_scheduler_patience: 2
+	use_dual_branch: True
+	warmup_steps: 4000
+	weight_decay: 0.01
+使用预定义的环境列表: ['sleep-edf-78', 'shhs']
+加载文件 SC4012E0.npz 时出错: Unable to allocate 13.6 MiB for an array with shape (3558000,) and data type float32
+加载文件 SC4021E0.npz 时出错: Unable to allocate 11.7 MiB for an array with shape (3075000,) and data type float32
+加载文件 SC4022E0.npz 时出错: Unable to allocate 11.5 MiB for an array with shape (3027000,) and data type float32
+加载文件 SC4031E0.npz 时出错: Unable to allocate 10.9 MiB for an array with shape (2856000,) and data type float32
+加载文件 SC4032E0.npz 时出错: Unable to allocate 10.4 MiB for an array with shape (2733000,) and data type float32
+加载文件 SC4041E0.npz 时出错: Unable to allocate 14.1 MiB for an array with shape (3705000,) and data type float32
+加载文件 SC4042E0.npz 时出错: Unable to allocate 13.7 MiB for an array with shape (3600000,) and data type float32
+加载文件 SC4052E0.npz 时出错: Unable to allocate 14.3 MiB for an array with shape (3738000,) and data type float32
+加载文件 SC4061E0.npz 时出错: Unable to allocate 9.65 MiB for an array with shape (2529000,) and data type float32
+加载文件 SC4062E0.npz 时出错: Unable to allocate 11.6 MiB for an array with shape (3048000,) and data type float32
+加载文件 SC4071E0.npz 时出错: Unable to allocate 11.2 MiB for an array with shape (2928000,) and data type float32
+加载文件 SC4072E0.npz 时出错: Unable to allocate 14.6 MiB for an array with shape (3819000,) and data type float32
+加载文件 SC4081E0.npz 时出错: Unable to allocate 13.0 MiB for an array with shape (3402000,) and data type float32
+加载文件 SC4082E0.npz 时出错: Unable to allocate 12.1 MiB for an array with shape (3162000,) and data type float32
+加载文件 SC4091E0.npz 时出错: Unable to allocate 13.0 MiB for an array with shape (3396000,) and data type float32
+加载文件 SC4092E0.npz 时出错: Unable to allocate 12.6 MiB for an array with shape (3315000,) and data type float32
+加载文件 SC4101E0.npz 时出错: Unable to allocate 12.6 MiB for an array with shape (3312000,) and data type float32
+加载文件 SC4102E0.npz 时出错: Unable to allocate 12.5 MiB for an array with shape (3276000,) and data type float32
+加载文件 SC4111E0.npz 时出错: Unable to allocate 10.6 MiB for an array with shape (2784000,) and data type float32
+加载文件 SC4112E0.npz 时出错: Unable to allocate 9.18 MiB for an array with shape (2406000,) and data type float32
+加载文件 SC4121E0.npz 时出错: Unable to allocate 12.0 MiB for an array with shape (3156000,) and data type float32
+加载文件 SC4122E0.npz 时出错: Unable to allocate 11.2 MiB for an array with shape (2931000,) and data type float32
+加载文件 SC4131E0.npz 时出错: Unable to allocate 11.8 MiB for an array with shape (3084000,) and data type float32
+加载文件 SC4141E0.npz 时出错: Unable to allocate 11.5 MiB for an array with shape (3012000,) and data type float32
+加载文件 SC4142E0.npz 时出错: Unable to allocate 10.9 MiB for an array with shape (2856000,) and data type float32
+加载文件 SC4151E0.npz 时出错: Unable to allocate 10.9 MiB for an array with shape (2856000,) and data type float32
+加载文件 SC4152E0.npz 时出错: Unable to allocate 20.2 MiB for an array with shape (5286000,) and data type float32
+加载文件 SC4161E0.npz 时出错: Unable to allocate 13.1 MiB for an array with shape (3432000,) and data type float32
+加载文件 SC4162E0.npz 时出错: Unable to allocate 11.5 MiB for an array with shape (3009000,) and data type float32
+加载文件 SC4171E0.npz 时出错: Unable to allocate 11.5 MiB for an array with shape (3006000,) and data type float32
+加载文件 SC4172E0.npz 时出错: Unable to allocate 20.3 MiB for an array with shape (5319000,) and data type float32
+加载文件 SC4181E0.npz 时出错: Unable to allocate 11.0 MiB for an array with shape (2892000,) and data type float32
+加载文件 SC4182E0.npz 时出错: Unable to allocate 10.5 MiB for an array with shape (2760000,) and data type float32
+加载文件 SC4191E0.npz 时出错: Unable to allocate 17.6 MiB for an array with shape (4605000,) and data type float32
+加载文件 SC4192E0.npz 时出错: Unable to allocate 14.6 MiB for an array with shape (3822000,) and data type float32
+加载文件 SC4201E0.npz 时出错: Unable to allocate 11.7 MiB for an array with shape (3066000,) and data type float32
+加载文件 SC4202E0.npz 时出错: Unable to allocate 11.7 MiB for an array with shape (3063000,) and data type float32
+加载文件 SC4211E0.npz 时出错: Unable to allocate 18.1 MiB for an array with shape (4734000,) and data type float32
+加载文件 SC4212E0.npz 时出错: Unable to allocate 9.25 MiB for an array with shape (2424000,) and data type float32
+加载文件 SC4221E0.npz 时出错: Unable to allocate 12.6 MiB for an array with shape (3297000,) and data type float32
+加载文件 SC4222E0.npz 时出错: Unable to allocate 12.7 MiB for an array with shape (3324000,) and data type float32
+加载文件 SC4231E0.npz 时出错: Unable to allocate 10.3 MiB for an array with shape (2712000,) and data type float32
+加载文件 SC4232E0.npz 时出错: Unable to allocate 19.8 MiB for an array with shape (5187000,) and data type float32
+加载文件 SC4241E0.npz 时出错: Unable to allocate 19.1 MiB for an array with shape (5019000,) and data type float32
+加载文件 SC4242E0.npz 时出错: Unable to allocate 20.3 MiB for an array with shape (5325000,) and data type float32
+加载文件 SC4251E0.npz 时出错: Unable to allocate 11.1 MiB for an array with shape (2916000,) and data type float32
+加载文件 SC4252E0.npz 时出错: Unable to allocate 11.7 MiB for an array with shape (3060000,) and data type float32
+加载文件 SC4261F0.npz 时出错: Unable to allocate 18.3 MiB for an array with shape (4791000,) and data type float32
+加载文件 SC4262F0.npz 时出错: Unable to allocate 11.2 MiB for an array with shape (2940000,) and data type float32
+加载文件 SC4271F0.npz 时出错: Unable to allocate 12.0 MiB for an array with shape (3156000,) and data type float32
+加载文件 SC4272F0.npz 时出错: Unable to allocate 12.5 MiB for an array with shape (3270000,) and data type float32
+加载文件 SC4281G0.npz 时出错: Unable to allocate 12.9 MiB for an array with shape (3381000,) and data type float32
+加载文件 SC4282G0.npz 时出错: Unable to allocate 12.2 MiB for an array with shape (3210000,) and data type float32
+加载文件 SC4291G0.npz 时出错: Unable to allocate 12.9 MiB for an array with shape (3393000,) and data type float32
+加载文件 SC4292G0.npz 时出错: Unable to allocate 18.4 MiB for an array with shape (4815000,) and data type float32
+加载文件 SC4301E0.npz 时出错: Unable to allocate 10.6 MiB for an array with shape (2787000,) and data type float32
+加载文件 SC4302E0.npz 时出错: Unable to allocate 9.77 MiB for an array with shape (2562000,) and data type float32
+加载文件 SC4311E0.npz 时出错: Unable to allocate 12.1 MiB for an array with shape (3162000,) and data type float32
+加载文件 SC4312E0.npz 时出错: Unable to allocate 13.5 MiB for an array with shape (3543000,) and data type float32
+加载文件 SC4321E0.npz 时出错: Unable to allocate 17.9 MiB for an array with shape (4680000,) and data type float32
+加载文件 SC4322E0.npz 时出错: Unable to allocate 11.7 MiB for an array with shape (3063000,) and data type float32
+加载文件 SC4331F0.npz 时出错: Unable to allocate 21.6 MiB for an array with shape (5664000,) and data type float32
+加载文件 SC4332F0.npz 时出错: Unable to allocate 15.0 MiB for an array with shape (3936000,) and data type float32
+加载文件 SC4341F0.npz 时出错: Unable to allocate 17.2 MiB for an array with shape (4503000,) and data type float32
+加载文件 SC4342F0.npz 时出错: Unable to allocate 18.1 MiB for an array with shape (4746000,) and data type float32
+加载文件 SC4351F0.npz 时出错: Unable to allocate 11.2 MiB for an array with shape (2928000,) and data type float32
+加载文件 SC4352F0.npz 时出错: Unable to allocate 11.0 MiB for an array with shape (2889000,) and data type float32
+加载文件 SC4362F0.npz 时出错: Unable to allocate 9.43 MiB for an array with shape (2472000,) and data type float32
+加载文件 SC4371F0.npz 时出错: Unable to allocate 10.5 MiB for an array with shape (2754000,) and data type float32
+加载文件 SC4372F0.npz 时出错: Unable to allocate 17.3 MiB for an array with shape (4527000,) and data type float32
+加载文件 SC4481F0.npz 时出错: Unable to allocate 23.2 MiB for an array with shape (6081000,) and data type float32
+加载文件 SC4482F0.npz 时出错: Unable to allocate 21.9 MiB for an array with shape (5730000,) and data type float32
+加载文件 SC4491G0.npz 时出错: Unable to allocate 12.6 MiB for an array with shape (3303000,) and data type float32
+加载文件 SC4492G0.npz 时出错: Unable to allocate 11.9 MiB for an array with shape (3120000,) and data type float32
+加载文件 SC4501E0.npz 时出错: Unable to allocate 15.2 MiB for an array with shape (3978000,) and data type float32
+加载文件 SC4502E0.npz 时出错: Unable to allocate 12.6 MiB for an array with shape (3309000,) and data type float32
+加载文件 SC4511E0.npz 时出错: Unable to allocate 12.4 MiB for an array with shape (3261000,) and data type float32
+加载文件 SC4512E0.npz 时出错: Unable to allocate 10.9 MiB for an array with shape (2862000,) and data type float32
+加载文件 SC4522E0.npz 时出错: Unable to allocate 11.4 MiB for an array with shape (2991000,) and data type float32
+加载文件 SC4531E0.npz 时出错: Unable to allocate 12.5 MiB for an array with shape (3288000,) and data type float32
+加载文件 SC4532E0.npz 时出错: Unable to allocate 12.1 MiB for an array with shape (3168000,) and data type float32
+加载文件 SC4541F0.npz 时出错: Unable to allocate 19.6 MiB for an array with shape (5148000,) and data type float32
+加载文件 SC4542F0.npz 时出错: Unable to allocate 13.1 MiB for an array with shape (3444000,) and data type float32
+加载文件 SC4551F0.npz 时出错: Unable to allocate 12.0 MiB for an array with shape (3141000,) and data type float32
+加载文件 SC4552F0.npz 时出错: Unable to allocate 12.5 MiB for an array with shape (3270000,) and data type float32
+加载文件 SC4561F0.npz 时出错: Unable to allocate 14.2 MiB for an array with shape (3711000,) and data type float32
+加载文件 SC4562F0.npz 时出错: Unable to allocate 13.1 MiB for an array with shape (3444000,) and data type float32
+加载文件 SC4571F0.npz 时出错: Unable to allocate 14.1 MiB for an array with shape (3708000,) and data type float32
+加载文件 SC4572F0.npz 时出错: Unable to allocate 12.5 MiB for an array with shape (3285000,) and data type float32
+加载文件 SC4581G0.npz 时出错: Unable to allocate 12.5 MiB for an array with shape (3285000,) and data type float32
+加载文件 SC4582G0.npz 时出错: Unable to allocate 13.4 MiB for an array with shape (3525000,) and data type float32
+加载文件 SC4591G0.npz 时出错: Unable to allocate 21.1 MiB for an array with shape (5520000,) and data type float32
+加载文件 SC4592G0.npz 时出错: Unable to allocate 14.1 MiB for an array with shape (3693000,) and data type float32
+加载文件 SC4601E0.npz 时出错: Unable to allocate 15.4 MiB for an array with shape (4047000,) and data type float32
+加载文件 SC4602E0.npz 时出错: Unable to allocate 23.4 MiB for an array with shape (6129000,) and data type float32
+加载文件 SC4611E0.npz 时出错: Unable to allocate 18.9 MiB for an array with shape (4956000,) and data type float32
+加载文件 SC4612E0.npz 时出错: Unable to allocate 12.2 MiB for an array with shape (3186000,) and data type float32
+加载文件 SC4621E0.npz 时出错: Unable to allocate 16.5 MiB for an array with shape (4335000,) and data type float32
+加载文件 SC4622E0.npz 时出错: Unable to allocate 20.9 MiB for an array with shape (5469000,) and data type float32
+加载文件 SC4631E0.npz 时出错: Unable to allocate 12.2 MiB for an array with shape (3189000,) and data type float32
+加载文件 SC4632E0.npz 时出错: Unable to allocate 12.7 MiB for an array with shape (3321000,) and data type float32
+加载文件 SC4641E0.npz 时出错: Unable to allocate 14.5 MiB for an array with shape (3813000,) and data type float32
+加载文件 SC4642E0.npz 时出错: Unable to allocate 23.4 MiB for an array with shape (6147000,) and data type float32
+加载文件 SC4651E0.npz 时出错: Unable to allocate 30.3 MiB for an array with shape (7932000,) and data type float32
+加载文件 SC4652E0.npz 时出错: Unable to allocate 22.1 MiB for an array with shape (5787000,) and data type float32
+加载文件 SC4661E0.npz 时出错: Unable to allocate 23.2 MiB for an array with shape (6078000,) and data type float32
+加载文件 SC4662E0.npz 时出错: Unable to allocate 22.8 MiB for an array with shape (5982000,) and data type float32
+加载文件 SC4671G0.npz 时出错: Unable to allocate 22.5 MiB for an array with shape (5904000,) and data type float32
+加载文件 SC4672G0.npz 时出错: Unable to allocate 11.7 MiB for an array with shape (3063000,) and data type float32
+加载文件 SC4701E0.npz 时出错: Unable to allocate 19.6 MiB for an array with shape (5151000,) and data type float32
+加载文件 SC4702E0.npz 时出错: Unable to allocate 17.3 MiB for an array with shape (4545000,) and data type float32
+加载文件 SC4711E0.npz 时出错: Unable to allocate 16.2 MiB for an array with shape (4239000,) and data type float32
+加载文件 SC4712E0.npz 时出错: Unable to allocate 14.2 MiB for an array with shape (3723000,) and data type float32
+加载文件 SC4721E0.npz 时出错: Unable to allocate 11.8 MiB for an array with shape (3093000,) and data type float32
+加载文件 SC4722E0.npz 时出错: Unable to allocate 12.9 MiB for an array with shape (3390000,) and data type float32
+加载文件 SC4731E0.npz 时出错: Unable to allocate 30.5 MiB for an array with shape (8001000,) and data type float32
+加载文件 SC4732E0.npz 时出错: Unable to allocate 26.5 MiB for an array with shape (6954000,) and data type float32
+加载文件 SC4741E0.npz 时出错: Unable to allocate 25.3 MiB for an array with shape (6630000,) and data type float32
+加载文件 SC4742E0.npz 时出错: Unable to allocate 12.2 MiB for an array with shape (3189000,) and data type float32
+加载文件 SC4751E0.npz 时出错: Unable to allocate 23.4 MiB for an array with shape (6132000,) and data type float32
+加载文件 SC4752E0.npz 时出错: Unable to allocate 12.0 MiB for an array with shape (3147000,) and data type float32
+加载文件 SC4761E0.npz 时出错: Unable to allocate 19.3 MiB for an array with shape (5049000,) and data type float32
+加载文件 SC4762E0.npz 时出错: Unable to allocate 30.5 MiB for an array with shape (7986000,) and data type float32
+加载文件 SC4771G0.npz 时出错: Unable to allocate 15.2 MiB for an array with shape (3975000,) and data type float32
+加载文件 SC4772G0.npz 时出错: Unable to allocate 15.2 MiB for an array with shape (3972000,) and data type float32
+加载文件 SC4801G0.npz 时出错: Unable to allocate 14.2 MiB for an array with shape (3723000,) and data type float32
+加载文件 SC4802G0.npz 时出错: Unable to allocate 14.1 MiB for an array with shape (3687000,) and data type float32
+加载文件 SC4811G0.npz 时出错: Unable to allocate 14.8 MiB for an array with shape (3879000,) and data type float32
+加载文件 SC4812G0.npz 时出错: Unable to allocate 13.5 MiB for an array with shape (3549000,) and data type float32
+加载文件 SC4821G0.npz 时出错: Unable to allocate 19.5 MiB for an array with shape (5112000,) and data type float32
+加载文件 SC4822G0.npz 时出错: Unable to allocate 15.6 MiB for an array with shape (4098000,) and data type float32
+Traceback (most recent call last):
+  File "D:\PycharmProjects\DomainBed-sleep\scripts\train.py", line 131, in <module>
+    dataset = vars(datasets)[args.dataset](args.data_dir,
+        args.target_env, hparams)
+  File "D:\PycharmProjects\DomainBed-sleep\datasets.py", line 304, in __init__
+    super().__init__(self.dir, test_envs, hparams)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\PycharmProjects\DomainBed-sleep\datasets.py", line 181, in __init__
+    env_data, env_labels = self._load_environment_data(env_path)
+                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "D:\PycharmProjects\DomainBed-sleep\datasets.py", line 279, in _load_environment_data
+    return np.concatenate(all_x, axis=0), np.concatenate(all_y, axis=0)
+           ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+numpy._core._exceptions._ArrayMemoryError: Unable to allocate 285. MiB for an array with shape (24872, 3000, 1) and data type float32
+Environment:
+	Python: 3.13.5
+	PyTorch: 2.9.0+cpu
+	CUDA: None
+	CUDNN: None
+	NumPy: 2.3.4
+Args:
+	algorithm: CDANN
+	checkpoint_freq: None
+	data_dir: D:\PycharmProjects\DomainBed-sleep\eeg_data
+	dataset: SleepDataset
+	holdout_fraction: 0.2
+	hparams: None
+	hparams_seed: 0
+	output_dir: results/dann_test_env0
+	save_model_every_checkpoint: False
+	seed: 34
+	skip_model_save: False
+	steps: None
+	target_env: [0]
+	task: domain_adaptation
+	trial_seed: 34
+	uda_holdout_fraction: 0.8
+HParams:
+	batch_size: 128
+	beta1: 0.5
+	d_steps_per_g_step: 0.1
+	disc_grad_clip: 1.0
+	disc_loss_critical_threshold: 0.1
+	disc_loss_floor: 0.7
+	disc_loss_history_length: 150
+	dual_branch_dim: 30
+	grad_penalty: 3.0
+	lambda_end: 0.4
+	lr: 0.001
+	lr_d: 0.0001
+	lr_g: 0.001
+	max_lambda: 0.3
+	min_lr: 1e-06
+	mlp_depth: 2
+	mlp_dropout: 0.3
+	mlp_width: 128
+	nonlinear_classifier: False
+	scheduler_step_interval: 150
+	source_scheduler_factor: 0.5
+	source_scheduler_patience: 10
+	target_scheduler_factor: 0.2
+	target_scheduler_patience: 2
+	use_dual_branch: True
+	warmup_steps: 4000
+	weight_decay: 0.01
+使用预定义的环境列表: ['sleep-edf-78', 'shhs']
+成功加载环境 sleep-edf-78: 195479 个样本, 输入形状: (1, 3000)
+Environment:
+	Python: 3.13.5
+	PyTorch: 2.9.0+cpu
+	CUDA: None
+	CUDNN: None
+	NumPy: 2.3.4
+Args:
+	algorithm: CDANN
+	checkpoint_freq: None
+	data_dir: D:\PycharmProjects\DomainBed-sleep\eeg_data
+	dataset: SleepDataset
+	holdout_fraction: 0.2
+	hparams: None
+	hparams_seed: 0
+	output_dir: results/dann_test_env0
+	save_model_every_checkpoint: False
+	seed: 34
+	skip_model_save: False
+	steps: 100
+	target_env: [0]
+	task: domain_adaptation
+	trial_seed: 34
+	uda_holdout_fraction: 0.8
+HParams:
+	batch_size: 128
+	beta1: 0.5
+	d_steps_per_g_step: 0.1
+	disc_grad_clip: 1.0
+	disc_loss_critical_threshold: 0.1
+	disc_loss_floor: 0.7
+	disc_loss_history_length: 150
+	dual_branch_dim: 30
+	grad_penalty: 3.0
+	lambda_end: 0.4
+	lr: 0.001
+	lr_d: 0.0001
+	lr_g: 0.001
+	max_lambda: 0.3
+	min_lr: 1e-06
+	mlp_depth: 2
+	mlp_dropout: 0.3
+	mlp_width: 128
+	nonlinear_classifier: False
+	scheduler_step_interval: 150
+	source_scheduler_factor: 0.5
+	source_scheduler_patience: 10
+	target_scheduler_factor: 0.2
+	target_scheduler_patience: 2
+	use_dual_branch: True
+	warmup_steps: 4000
+	weight_decay: 0.01
+使用预定义的环境列表: ['sleep-edf-78', 'shhs']
+成功加载环境 sleep-edf-78: 195479 个样本, 输入形状: (1, 3000)
+Environment:
+	Python: 3.13.5
+	PyTorch: 2.9.0+cpu
+	CUDA: None
+	CUDNN: None
+	NumPy: 2.3.4
+Args:
+	algorithm: CDANN
+	checkpoint_freq: None
+	data_dir: D:\PycharmProjects\DomainBed-sleep\eeg_data
+	dataset: SleepDataset
+	holdout_fraction: 0.2
+	hparams: None
+	hparams_seed: 0
+	output_dir: results/dann_test_env0
+	save_model_every_checkpoint: False
+	seed: 34
+	skip_model_save: False
+	steps: 100
+	target_env: [0]
+	task: domain_adaptation
+	trial_seed: 34
+	uda_holdout_fraction: 0.8
+HParams:
+	batch_size: 128
+	beta1: 0.5
+	d_steps_per_g_step: 0.1
+	disc_grad_clip: 1.0
+	disc_loss_critical_threshold: 0.1
+	disc_loss_floor: 0.7
+	disc_loss_history_length: 150
+	dual_branch_dim: 30
+	grad_penalty: 3.0
+	lambda_end: 0.4
+	lr: 0.001
+	lr_d: 0.0001
+	lr_g: 0.001
+	max_lambda: 0.3
+	min_lr: 1e-06
+	mlp_depth: 2
+	mlp_dropout: 0.3
+	mlp_width: 128
+	nonlinear_classifier: False
+	scheduler_step_interval: 150
+	source_scheduler_factor: 0.5
+	source_scheduler_patience: 10
+	target_scheduler_factor: 0.2
+	target_scheduler_patience: 2
+	use_dual_branch: True
+	warmup_steps: 4000
+	weight_decay: 0.01
+使用预定义的环境列表: ['sleep-edf-78', 'shhs']
+成功加载环境 sleep-edf-78: 195479 个样本, 输入形状: (1, 3000)
+成功加载环境 shhs: 324854 个样本, 输入形状: (1, 3750)
+
+数据集环境信息:
+目标域 (env_0): ['sleep-edf-78']
+源域 (env_1): ['shhs']

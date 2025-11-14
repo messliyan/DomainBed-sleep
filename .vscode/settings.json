@@ -1,3 +1,5 @@
 {
-    "Codegeex.RepoIndex": true
+    "Codegeex.RepoIndex": true,
+    "python.defaultInterpreterPath": "/home/hhao/hcf/miniconda3/envs/eeg_domain_adapt/bin/python",
+    "python.terminal.activateEnvironment": true
 }

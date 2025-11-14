@@ -2,3 +2,5 @@
 /eeg_data/sleep-edf-78
 /eeg_data/sleep-edf-20
 /scripts/results/
+/results/
+/.venv/

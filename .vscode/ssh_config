@@ -1,0 +1,6 @@
+Host eeg-domain-adapt
+  HostName 10.108.17.28
+  Port 786
+  User hhao
+  IdentityFile ~/.ssh/id_rsa
+  ForwardAgent yes

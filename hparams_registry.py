@@ -76,7 +76,7 @@ def _hparams(algorithm, dataset, random_seed):
     # 算法特定超参数定义
     # 每个代码块对应一种算法的超参数
     _hparam('lr_g', 1e-3, lambda r: 10 ** r.uniform(-5, -3.5))
-    _hparam('lr_d', 1e-4, lambda r: 10 ** r.uniform(-5, -3.5))
+    _hparam('lr_d', 1e-3, lambda r: 10 ** r.uniform(-5, -3.5))
 
     # 1. 域对抗训练算法
     if algorithm in ['DANN', 'CDANN']:  # 域对抗神经网络及其变体
@@ -94,8 +94,8 @@ def _hparams(algorithm, dataset, random_seed):
         _hparam('scheduler_step_interval', 150, lambda r: int(10 ** r.uniform(1, 3)))  # 调度器调用间隔步数
         _hparam('source_scheduler_patience', 10, lambda r: int(r.choice([5, 10, 15])))  # 源域调度器耐心值
         _hparam('source_scheduler_factor', 0.5, lambda r: r.choice([0.3, 0.5, 0.7]))  # 源域调度器学习率衰减因子
-        _hparam('target_scheduler_patience', 2, lambda r: int(r.choice([1, 2, 3])))  # 目标域调度器耐心值
-        _hparam('target_scheduler_factor', 0.2, lambda r: r.choice([0.1, 0.2, 0.3]))  # 目标域调度器学习率衰减因子
+        _hparam('target_scheduler_patience', 10, lambda r: int(r.choice([1, 2, 3])))  # 目标域调度器耐心值
+        _hparam('target_scheduler_factor', 0.5, lambda r: r.choice([0.1, 0.2, 0.3]))  # 目标域调度器学习率衰减因子
         _hparam('min_lr', 1e-6, lambda r: 10 ** r.uniform(-7, -5))  # 最低学习率限制
         
         # DANN特定参0数
